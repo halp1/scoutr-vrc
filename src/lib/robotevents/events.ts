@@ -1,6 +1,6 @@
 import { CONSTANTS } from '$lib/const';
+import { load } from '@tauri-apps/plugin-store';
 import { cache } from './cache';
-import { Paginator } from './wrapper';
 
 export interface Country {
 	id: number;
@@ -112,6 +112,43 @@ const defaultQuery: EventsQuery = {
 	eventRegion: null
 };
 
+export const cookies = load('robotevents-cookies.json');
+
+interface Cookie {
+	name: string;
+	value: string;
+	expires: number;
+}
+
+const parseSetCookieHeader = (header: string): Cookie | null => {
+	const parts = header.split(';').map((p) => p.trim());
+	const nameValue = parts[0];
+	const eqIdx = nameValue.indexOf('=');
+	if (eqIdx === -1) return null;
+
+	const name = nameValue.slice(0, eqIdx).trim();
+	const value = nameValue.slice(eqIdx + 1).trim();
+	let expires = Date.now() + 24 * 60 * 60 * 1000;
+
+	for (const attr of parts.slice(1)) {
+		const lower = attr.toLowerCase();
+		if (lower.startsWith('max-age=')) {
+			const maxAge = parseInt(attr.slice(8));
+			if (!isNaN(maxAge)) {
+				expires = Date.now() + maxAge * 1000;
+				break;
+			}
+		} else if (lower.startsWith('expires=')) {
+			const date = new Date(attr.slice(8));
+			if (!isNaN(date.getTime())) {
+				expires = date.getTime();
+			}
+		}
+	}
+
+	return { name, value, expires };
+};
+
 export const getEvents = async (
 	query: Omit<Partial<EventsQuery>, 'season'> & { season: number },
 	cancelled: () => boolean
@@ -132,21 +169,68 @@ export const getEvents = async (
 	if (q.eventRegion) params.append('event_region', q.eventRegion.toString());
 
 	const regionsPromise = loadEventRegions(q.season).catch(() => []);
+	const cookieStore = await cookies;
 
 	const loadPage = async (page: number) => {
+		const storedCookies = (await cookieStore.get<Cookie[]>('cookies')) ?? [];
+		const now = Date.now();
+		const validCookies = storedCookies.filter((c) => c.expires > now);
+
 		params.set('page', page.toString());
 
 		const target = `https://www.robotevents.com/robot-competitions/${'vex-robotics-competition'}${params.toString().length > 0 ? `?${params.toString()}` : ''}`;
 
-		const raw = await window
-			.fetchCORS(target, {
-				headers: {
-					'User-Agent':
-						'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-					Authorization: `Bearer ${CONSTANTS.ROBOTEVENTS_API_KEY}`
+		const cookieHeader = validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+
+		const response = await window.fetchCORS(target, {
+			headers: {
+				'User-Agent':
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+				Authorization: `Bearer ${CONSTANTS.ROBOTEVENTS_API_KEY}`,
+				...(cookieHeader.length > 0 ? { Cookie: cookieHeader } : {}),
+				accept:
+					'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+				'accept-language': 'en-US,en;q=0.9,es-US;q=0.8,es;q=0.7',
+				'cache-control': 'no-cache',
+				pragma: 'no-cache',
+				priority: 'u=0, i',
+				'sec-ch-ua': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+				'sec-ch-ua-mobile': '?0',
+				'sec-ch-ua-platform': '"Windows"',
+				'sec-fetch-dest': 'document',
+				'sec-fetch-mode': 'navigate',
+				'sec-fetch-site': 'none',
+				'sec-fetch-user': '?1',
+				'upgrade-insecure-requests': '1',
+			}
+		});
+
+		const responseHeaders = response.headers as unknown as Headers;
+		const setCookieValues: string[] =
+			typeof responseHeaders.getSetCookie === 'function'
+				? responseHeaders.getSetCookie()
+				: ([responseHeaders.get('set-cookie')].filter(Boolean) as string[]);
+
+		if (setCookieValues.length > 0) {
+			const newCookies = setCookieValues
+				.map(parseSetCookieHeader)
+				.filter((c): c is Cookie => c !== null);
+
+			const merged = [...validCookies];
+			for (const nc of newCookies) {
+				const idx = merged.findIndex((c) => c.name === nc.name);
+				if (idx !== -1) {
+					merged[idx] = nc;
+				} else {
+					merged.push(nc);
 				}
-			})
-			.then((res) => res.text());
+			}
+
+			await cookieStore.set('cookies', merged);
+			await cookieStore.save();
+		}
+
+		const raw = await response.text();
 
 		const regions = await regionsPromise;
 
@@ -186,7 +270,7 @@ export const getEvents = async (
 			throw new Error('Cloudflare is blocking event search.\nPlease try again later.');
 		}
 
-		const events = document.body.textContent.includes('No matching events found')
+		const events = document.body.textContent?.includes('No matching events found')
 			? []
 			: items.map((item) => ({
 					name: item.querySelector('a')?.childNodes?.[0]?.textContent?.trim?.() ?? '',

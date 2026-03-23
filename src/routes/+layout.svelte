@@ -92,18 +92,22 @@
 				active: r.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(r.path)
 			}))
 	);
+
+	let navbarHidden = $derived(!dyanmicRoutes.some((r) => r.active));
 </script>
 
 {#if $storage === null}
 	<div class="loading">
 		<div class="spinner"></div>
 	</div>
-{:else if onboarding}
-	{@render children?.()}
 {:else}
-	<div class="relative h-[calc(100vh-48px)]">{@render children?.()}</div>
+	<div class="relative {navbarHidden ? 'h-screen' : 'h-[calc(100vh-48px)]'}">
+		{@render children?.()}
+	</div>
 	<div
-		class="grid h-12 items-center transition-all"
+		class="grid items-center transition-all overflow-y-auto"
+		class:h-12={!navbarHidden}
+		class:h-0={navbarHidden}
 		style="grid-template-columns: repeat({routes.length}, minmax(0, 1fr));"
 	>
 		{#each dyanmicRoutes as route}

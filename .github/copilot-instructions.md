@@ -8,7 +8,8 @@
 - State persistence is handled through `@tauri-apps/plugin-store` and centralized in `src/lib/state/storage.ts`.
 - Auth is handled with Supabase in `src/lib/supabase`.
 - RobotEvents integration lives under `src/lib/robotevents`.
-- Ui components are from shadcn-svelte, a svelte clone of shadcn-ui. Use `bun x shadcn-svelte@latest add <component name>` to add new components and follow existing patterns for styling and usage. Custom components should be placed in `src/lib/components/custom`.
+- The official RobotEvents OpenAPI spec is saved at `src/lib/robotevents/swagger.yml` and should be used as the endpoint source of truth.
+- Ui components are from shadcn-svelte, a svelte clone of shadcn-ui. Always add official components with `bun x shadcn-svelte@latest add <component name>` instead of hand-rolling replacements when a matching component exists. Custom components should be placed in `src/lib/components/custom`.
 
 ## Primary Tech Rules
 
@@ -40,6 +41,8 @@
 ## Data and State Conventions
 
 - Use existing wrappers and modules instead of introducing parallel data access paths.
+- For RobotEvents usage, always import `re` from `$lib/robotevents` and do not deep-import from subpaths inside that folder.
+- Prefer existing RobotEvents helper utilities (including pagination helpers like `maxPages` and `depaginate`) instead of re-implementing endpoint pagination logic.
 - Persist app-level user/team/event settings through the central `storage` store.
 - Keep onboarding/auth flow behavior aligned with logic in `src/routes/+layout.svelte` and `src/lib/state`.
 
@@ -47,9 +50,6 @@
 
 - After meaningful changes, run:
 - `npm run check`
-- `npm run lint`
-- `npm run build`
-- Use `npm run tauri` only when Tauri-side behavior must be validated.
 
 ## Change Strategy
 

@@ -4,6 +4,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { re } from '$lib/robotevents';
 	import { storage } from '$lib/state';
+	import { getVDAStatsByTeamNum, type VDAStats } from '$lib/data/vda';
 	import { Code, Gamepad2, Hash, Plus, SquareSigma, Star, Terminal, Trophy } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { writable, type Writable } from 'svelte/store';
@@ -19,6 +20,17 @@
 
 	onMount(() => {
 		re.custom.teams.lazyTeamDetail(id, season, [details, matches, skills, awards]);
+	});
+
+	let vdaStats = $state<VDAStats | null>(null);
+
+	$effect(() => {
+		const num = $details?.number;
+		if (num) {
+			getVDAStatsByTeamNum(season, num).then((v) => {
+				vdaStats = v;
+			});
+		}
 	});
 
 	let skillsRank = $derived($skills?.rank ?? Infinity);
@@ -194,6 +206,34 @@
 				<div class="flex items-center gap-2">
 					<Icon class="h-4 w-4 {Icon === Terminal ? '-mb-1' : ''}" />
 					{#if value}
+						{value}
+					{:else}
+						<Skeleton class="h-4 w-6" />
+					{/if}
+				</div>
+				<div class="text-sm text-muted-foreground">{label}</div>
+			</div>
+		{/each}
+	</Card.Content>
+</Card.Root>
+
+<!-- vda stats -->
+<Card.Root class="relative mx-4 mt-5 flex flex-row items-end gap-0">
+	<div class="ml-6">
+		<Card.Title class="text-3xl">
+			{#if vdaStats}
+				{vdaStats.trueSkill?.toFixed(1) ?? '—'}
+			{:else}
+				<Skeleton class="h-8 w-8" />
+			{/if}
+		</Card.Title>
+		<Card.Description class="whitespace-nowrap">TrueSkill</Card.Description>
+	</div>
+	<Card.Content class="ml-auto flex gap-4">
+		{#each [['Rank', vdaStats?.trueSkillGlobalRank], ['OPR', vdaStats?.opr != null ? vdaStats.opr.toFixed(1) : null], ['DPR', vdaStats?.dpr != null ? vdaStats.dpr.toFixed(1) : null], ['CCWM', vdaStats?.ccwm != null ? vdaStats.ccwm.toFixed(1) : null]] as [label, value]}
+			<div class="flex flex-col">
+				<div>
+					{#if value != null}
 						{value}
 					{:else}
 						<Skeleton class="h-4 w-6" />

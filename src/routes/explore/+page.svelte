@@ -17,6 +17,9 @@
 	} from '@lucide/svelte';
 
 	import * as Drawer from '$lib/components/ui/drawer';
+	import { Calendar } from '$lib/components/ui/calendar';
+	import { CalendarDate, getLocalTimeZone, today, type DateValue } from '@internationalized/date';
+	import { Calendar as CalendarIcon } from '@lucide/svelte';
 
 	import * as Command from '$lib/components/ui/command';
 	import * as Popover from '$lib/components/ui/popover';
@@ -25,11 +28,39 @@
 
 	let error = $state<string | null>(null);
 
+	type EventDate = `${number}${number}${number}${number}-${number}${number}-${number}${number}`;
+
+	const toEventDate = (v: DateValue): EventDate =>
+		`${v.year}-${String(v.month).padStart(2, '0')}-${String(v.day).padStart(2, '0')}` as EventDate;
+
+	const tz = getLocalTimeZone();
+	const now = today(tz);
+
+	const urlParams = new URLSearchParams(location.search);
+
+	const parseUrlDate = (key: string, fallback: DateValue): DateValue => {
+		const s = urlParams.get(key);
+		if (!s) return fallback;
+		const [y, m, d] = s.split('-').map(Number);
+		return new CalendarDate(y, m, d);
+	};
+
+	let fromDate = $state<DateValue>(parseUrlDate('from', now.subtract({ days: 7 })));
+	let toDate = $state<DateValue>(parseUrlDate('to', now.add({ years: 1 })));
+	let fromPickerOpen = $state(false);
+	let toPickerOpen = $state(false);
+
 	let query = $state({
-		value: '',
-		type: 'all' as 'all' | 'teams' | 'events',
+		value: urlParams.get('q') ?? '',
+		type: (urlParams.get('type') ?? 'all') as 'all' | 'teams' | 'events',
 		filters: {
-			region: ''
+			region: urlParams.get('region') ?? '',
+			get from(): EventDate {
+				return toEventDate(fromDate);
+			},
+			get to(): EventDate {
+				return toEventDate(toDate);
+			}
 		}
 	});
 
@@ -66,20 +97,33 @@
 		season = seasons.reduce((a, b) => (a.end! > b.end! ? a : b)).id!;
 	});
 
+	$effect(() => {
+		const params = new URLSearchParams();
+		if (query.value) params.set('q', query.value);
+		if (query.type !== 'all') params.set('type', query.type);
+		if (query.filters.region) params.set('region', query.filters.region);
+		params.set('from', toEventDate(fromDate));
+		params.set('to', toEventDate(toDate));
+		history.replaceState(history.state, '', `?${params}`);
+	});
+
 	let rawResults = $state<{
 		teams: re.models.Team[] | null;
 		events: Awaited<ReturnType<typeof re.custom.events.getEvents>> | null;
 	} | null>(null);
 
+	let isLoading = $state(false);
 	let eventsPage = $state(1);
 
 	$effect(() => {
 		error = null;
 		if (query.value.length < 3) {
 			rawResults = null;
+			isLoading = false;
 			return;
 		}
 
+		isLoading = true;
 		let cancelled = false;
 
 		(async () => {
@@ -100,7 +144,9 @@
 								{
 									name: query.value,
 									season,
-									eventRegion: query.filters.region ? parseInt(query.filters.region) : undefined
+									eventRegion: query.filters.region ? parseInt(query.filters.region) : undefined,
+									from: query.filters.from || null,
+									to: query.filters.to || null
 								},
 								() => cancelled
 							)
@@ -118,6 +164,7 @@
 			} catch (e) {
 				if (!cancelled) {
 					error = (e as Error).message;
+					isLoading = false;
 				}
 				return;
 			}
@@ -128,11 +175,13 @@
 				if (!cancelled) {
 					if (!rawResults) rawResults = { teams: null, events: null };
 					rawResults.events = eventRes;
+					isLoading = false;
 				}
 			} catch (e) {
 				if (!cancelled && (rawResults?.teams?.length ?? 0) === 0) {
 					error = (e as Error).message;
 				}
+				if (!cancelled) isLoading = false;
 				return;
 			}
 		})();
@@ -239,13 +288,61 @@
 					</Command.Root>
 				</Popover.Content>
 			</Popover.Root>
+			<div class="mt-4 flex w-full flex-col gap-2">
+				<div class="text-sm text-muted-foreground">Date Range</div>
+				<div class="flex items-center gap-2">
+					<Popover.Root bind:open={fromPickerOpen}>
+						<Popover.Trigger class="relative flex-1">
+							{#snippet child({ props })}
+								<Button {...props} variant="outline" class="justify-between font-normal">
+									{fromDate.toDate(tz).toLocaleDateString()}
+									<CalendarIcon class="size-4 opacity-50" />
+								</Button>
+							{/snippet}
+						</Popover.Trigger>
+						<Popover.Content class="w-auto overflow-hidden p-0" align="start">
+							<Calendar
+								type="single"
+								bind:value={fromDate}
+								captionLayout="dropdown"
+								onValueChange={() => {
+									fromPickerOpen = false;
+								}}
+							/>
+						</Popover.Content>
+					</Popover.Root>
+					<span class="text-muted-foreground">–</span>
+					<Popover.Root bind:open={toPickerOpen}>
+						<Popover.Trigger class="flex-1">
+							{#snippet child({ props })}
+								<Button {...props} variant="outline" class="justify-between font-normal">
+									{toDate.toDate(tz).toLocaleDateString()}
+									<CalendarIcon class="size-4 opacity-50" />
+								</Button>
+							{/snippet}
+						</Popover.Trigger>
+						<Popover.Content class="w-auto overflow-hidden p-0" align="start">
+							<Calendar
+								type="single"
+								bind:value={toDate}
+								captionLayout="dropdown"
+								onValueChange={() => {
+									toPickerOpen = false;
+								}}
+							/>
+						</Popover.Content>
+					</Popover.Root>
+				</div>
+			</div>
 			<Drawer.Footer class="h-2" />
 		</Drawer.Content>
 	</Drawer.Root>
 </div>
 
 <div class="h-[calc(100%-48px)] w-full overflow-y-auto pt-2">
-	{#if rawResults}
+	{#if isLoading}
+		<div class="px-3 text-sm text-muted-foreground">Loading...</div>
+	{:else if rawResults}
 		{#if rawResults.teams && rawResults.teams.length > 0}
 			{#each rawResults.teams as team}
 				<Team id={team.id!} {season} />
@@ -266,9 +363,19 @@
 			</div>
 			<div>
 				{#each rawResults.events.events as event}
-					<div class="mx-2 flex items-center border-muted-foreground pb-2 not-first:border-t-2">
-						<div class="flex-1">
-							<div class="text-ellipsis whitespace-nowrap">{event.name}</div>
+					<button
+						class="mx-2 flex w-[calc(100%-1rem)] min-w-0 items-center border-muted-foreground pb-2 text-left not-first:border-t-2"
+						onclick={async () => {
+							const results = await re.depaginate(
+								re.events.eventGetEvents({ sku: [event.sku] }),
+								re.models.PaginatedEventFromJSON
+							);
+							const id = results[0]?.id;
+							if (id) goto(`/events/${id}`);
+						}}
+					>
+						<div class="min-w-0 flex-1">
+							<div class="overflow-hidden text-ellipsis whitespace-nowrap">{event.name}</div>
 							<div class="text-xs">
 								{event.location?.city}, {event.location?.state} |
 								{#if event.date.length === 1}
@@ -278,13 +385,11 @@
 								{/if}
 							</div>
 						</div>
-						<button>
-							<ArrowRight class="ml-3 h-7 w-7 cursor-pointer" size="sm" />
-						</button>
-					</div>
+						<ArrowRight class="ml-3 size-5 shrink-0" />
+					</button>
 				{/each}
 			</div>
-		{:else}
+		{:else if rawResults.teams !== null && rawResults.events !== null}
 			<div class="text-gray-500">
 				No {query.type === 'all' ? 'teams or events' : query.type} found
 			</div>
