@@ -45,7 +45,7 @@
 		return new CalendarDate(y, m, d);
 	};
 
-	let fromDate = $state<DateValue>(parseUrlDate('from', now.subtract({ days: 7 })));
+	let fromDate = $state<DateValue>(parseUrlDate('from', now.subtract({ years: 1 })));
 	let toDate = $state<DateValue>(parseUrlDate('to', now.add({ years: 1 })));
 	let fromPickerOpen = $state(false);
 	let toPickerOpen = $state(false);

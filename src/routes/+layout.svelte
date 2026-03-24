@@ -101,28 +101,41 @@
 		<div class="spinner"></div>
 	</div>
 {:else}
-	<div class="relative {navbarHidden ? 'h-screen' : 'h-[calc(100vh-48px)]'}">
-		{@render children?.()}
-	</div>
-	<div
-		class="grid items-center transition-all overflow-y-auto"
-		class:h-12={!navbarHidden}
-		class:h-0={navbarHidden}
-		style="grid-template-columns: repeat({routes.length}, minmax(0, 1fr));"
-	>
-		{#each dyanmicRoutes as route}
-			<a
-				href={route.path}
-				class="flex cursor-pointer flex-col items-center justify-center text-sm text-muted-foreground"
-			>
-				<route.icon
-					class="h-5 w-5 {route.active ? 'text-primary' : ''}"
-					stroke={route.active ? 'currentColor' : 'none'}
-				/>
-				<!-- <span class="overflow-hidden text-sm" class:h-5={route.active} class:h-0={!route.active}>
+	<div id="root">
+		<div class="relative {navbarHidden ? 'h-(--space)' : 'h-[calc(var(--space)-48px)]'}">
+			{@render children?.()}
+		</div>
+		<div
+			class="grid items-center overflow-y-auto transition-all"
+			class:h-12={!navbarHidden}
+			class:h-0={navbarHidden}
+			style="grid-template-columns: repeat({routes.length}, minmax(0, 1fr));"
+		>
+			{#each dyanmicRoutes as route}
+				<a
+					href={route.path}
+					class="flex cursor-pointer flex-col items-center justify-center text-sm text-muted-foreground"
+				>
+					<route.icon
+						class="h-5 w-5 {route.active ? 'text-primary' : ''}"
+						stroke={route.active ? 'currentColor' : 'none'}
+					/>
+					<!-- <span class="overflow-hidden text-sm" class:h-5={route.active} class:h-0={!route.active}>
 					{route.name}
 				</span> -->
-			</a>
-		{/each}
+				</a>
+			{/each}
+		</div>
 	</div>
 {/if}
+
+<style>
+	#root {
+		padding-top: env(safe-area-inset-top);
+		padding-bottom: env(safe-area-inset-bottom);
+		padding-left: env(safe-area-inset-left);
+		padding-right: env(safe-area-inset-right);
+
+		--space: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+	}
+</style>

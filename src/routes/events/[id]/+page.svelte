@@ -111,6 +111,7 @@
 	);
 	let teamLookup = $state<Map<number, TeamLookup>>(new Map());
 	let allSkills = $state<re.models.Skill[]>([]);
+	let awards = $state<re.models.Award[]>([]);
 	let scheduleRows = $state<ScheduleRow[]>([]);
 	let rankingRows = $state<RankingRow[]>([]);
 	let skillsRows = $state<SkillsRow[]>([]);
@@ -142,12 +143,11 @@
 		selectedRankingTeam ? normalizeTeam(selectedRankingTeam.team) : null
 	);
 
-	let selectedTeamRatings = $derived(
+	let selectedTeamRatings = $derived.by(
 		(): { opr: number | null; dpr: number | null; ccwm: number | null } => {
 			if (!selectedTeamKey || !divisionRatings) return { opr: null, dpr: null, ccwm: null };
 			const teamId = teamNumberToId.get(selectedTeamKey);
 			if (teamId === undefined) return { opr: null, dpr: null, ccwm: null };
-			console.log(divisionRatings);
 			const opr = divisionRatings.opr[teamId] ?? null;
 			const dpr = divisionRatings.dpr[teamId] ?? null;
 			const ccwm = divisionRatings.ccwm[teamId] ?? null;
@@ -253,6 +253,9 @@
 			const raw = match.name?.trim() ?? '';
 			if (raw.length > 0) {
 				const normalized = raw.replace(/\s+/g, ' ').trim();
+
+				const practice = normalized.match(/^practice\s*#?\s*(\d+)$/i);
+				if (practice) return `P${practice[1]}`;
 
 				const qualifier = normalized.match(/^(?:qualifier|qualification)\s*#?\s*(\d+)$/i);
 				if (qualifier) return `Q${qualifier[1]}`;
@@ -461,7 +464,7 @@
 
 		const loadEvent = async () => {
 			try {
-				const [event, teams, skills] = await Promise.all([
+				const [event, teams, skills, eventAwards] = await Promise.all([
 					re.events.eventGetEvent({ id }),
 					re.depaginate(
 						re.events.eventGetTeams({ id }, re.custom.maxPages),
@@ -470,7 +473,13 @@
 					re.depaginate(
 						re.events.eventGetSkills({ id }, re.custom.maxPages),
 						re.models.PaginatedSkillFromJSON
-					)
+					),
+					re
+						.depaginate(
+							re.events.eventGetAwards({ id }, re.custom.maxPages),
+							re.models.PaginatedAwardFromJSON
+						)
+						.catch(() => [] as re.models.Award[])
 				]);
 
 				if (cancelled) return;
@@ -490,6 +499,7 @@
 
 				teamLookup = buildTeamLookup(teams);
 				allSkills = skills;
+				awards = eventAwards;
 				infoData = buildInfoData(event, sortedDivisions[0]?.name ?? 'Division');
 			} catch (error) {
 				if (cancelled) return;
@@ -500,6 +510,7 @@
 				selectedDivisionValue = '';
 				teamLookup = new Map();
 				allSkills = [];
+				awards = [];
 				scheduleRows = [];
 				rankingRows = [];
 				skillsRows = [];
@@ -604,28 +615,6 @@
 	let skillsPaneRef = $state<HTMLElement | null>(null);
 	let infoPaneRef = $state<HTMLElement | null>(null);
 	let paneHeight = $state(1);
-	let paneHeightSyncFrame = 0;
-
-	const syncPaneHeight = () => {
-		const panes = [schedulePaneRef, rankingsPaneRef, skillsPaneRef, infoPaneRef];
-		const activePane = panes[activeIndex];
-		const nextHeight = activePane?.scrollHeight ?? activePane?.offsetHeight ?? 1;
-		const normalized = Math.max(1, nextHeight);
-		if (normalized !== paneHeight) {
-			paneHeight = normalized;
-		}
-	};
-
-	const schedulePaneHeightSync = () => {
-		if (paneHeightSyncFrame !== 0) {
-			cancelAnimationFrame(paneHeightSyncFrame);
-		}
-
-		paneHeightSyncFrame = requestAnimationFrame(() => {
-			paneHeightSyncFrame = 0;
-			syncPaneHeight();
-		});
-	};
 
 	const resetContentScroll = () => {
 		if (!contentScrollRef) return;
@@ -678,24 +667,21 @@
 	});
 
 	$effect(() => {
-		activeIndex;
-		scheduleRows.length;
-		rankingRows.length;
-		skillsRows.length;
-		selectedDivisionValue;
-		activeTitle;
-		isLoading;
-		loadError;
+		const activePane = [schedulePaneRef, rankingsPaneRef, skillsPaneRef, infoPaneRef][activeIndex];
+		if (!activePane) return;
 
-		schedulePaneHeightSync();
-	});
+		const sync = () => {
+			const h = Math.max(1, activePane.scrollHeight || 1);
+			if (h !== paneHeight) paneHeight = h;
+		};
 
-	$effect(() => {
+		const frame = requestAnimationFrame(sync);
+		const observer = new ResizeObserver(sync);
+		observer.observe(activePane);
+
 		return () => {
-			if (paneHeightSyncFrame !== 0) {
-				cancelAnimationFrame(paneHeightSyncFrame);
-				paneHeightSyncFrame = 0;
-			}
+			cancelAnimationFrame(frame);
+			observer.disconnect();
 		};
 	});
 
@@ -706,7 +692,6 @@
 		dragOffset = 0;
 		dragging = false;
 		resetContentScroll();
-		schedulePaneHeightSync();
 	};
 
 	const applyEdgeResistance = (offset: number) => {
@@ -733,7 +718,6 @@
 
 		if (targetIndex !== initialIndex) {
 			resetContentScroll();
-			schedulePaneHeightSync();
 		}
 	};
 
@@ -891,7 +875,7 @@
 			<div
 				bind:this={panesRef}
 				class="overflow-hidden"
-				style={`touch-action: pan-y; height: ${paneHeight}px; transition: ${dragging ? 'none' : 'height 220ms cubic-bezier(0.22, 1, 0.36, 1)'};`}
+				style={`touch-action: pan-y; height: ${paneHeight}px;`}
 				use:swipeNavigation
 			>
 				<div
@@ -908,7 +892,19 @@
 						<SkillsTab rows={skillsRows} />
 					</div>
 					<div bind:this={infoPaneRef} class="w-full shrink-0">
-						<InfoTab info={infoData} />
+						<InfoTab
+							info={infoData}
+							teams={[...teamLookup.entries()].map(([id, t]) => ({
+								id,
+								number: t.number,
+								name: t.name
+							}))}
+							{awards}
+							{rankingRows}
+							hasSchedule={scheduleRows.length > 0}
+							season={eventMeta?.season?.id ?? 0}
+							onTeamSelect={openTeamDrawer}
+						/>
 					</div>
 				</div>
 			</div>
@@ -920,9 +916,9 @@
 		team={selectedRankingTeam}
 		skills={selectedTeamSkills}
 		matches={selectedTeamMatches}
-		opr={selectedTeamRatings().opr}
-		dpr={selectedTeamRatings().dpr}
-		ccwm={selectedTeamRatings().ccwm}
+		opr={selectedTeamRatings.opr}
+		dpr={selectedTeamRatings.dpr}
+		ccwm={selectedTeamRatings.ccwm}
 	/>
 	<MatchDrawer bind:open={isMatchDrawerOpen} row={selectedMatchRow} {rankingRows} />
 </div>

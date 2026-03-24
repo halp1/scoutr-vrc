@@ -60,13 +60,13 @@
 					/>
 				</button>
 
-				{#if expandedGroups[section.key]}
+				<div class={expandedGroups[section.key] ? '' : 'hidden'}>
 					{#each section.rows as row}
 						<button type="button" onclick={() => onMatchSelect?.(row)} class="w-full text-left">
 							<MatchRow {row} />
 						</button>
 					{/each}
-				{/if}
+				</div>
 			</div>
 		{/if}
 	{/each}
