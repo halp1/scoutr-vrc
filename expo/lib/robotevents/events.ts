@@ -163,7 +163,9 @@ export const getEvents = async (
 		const events: SearchEvent[] = (raw.data ?? []).map((e: any) => ({
 			name: e.name ?? '',
 			sku: e.sku ?? '',
-			date: [e.start ? new Date(e.start) : null, e.end ? new Date(e.end) : null].filter(Boolean) as Date[],
+			date: [e.start ? new Date(e.start) : null, e.end ? new Date(e.end) : null].filter(
+				Boolean
+			) as Date[],
 			location: e.location
 				? {
 						address: e.location.address1 ?? e.location.venue,

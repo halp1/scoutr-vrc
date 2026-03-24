@@ -34,7 +34,10 @@ export class Cache<T extends Record<string, Source<any>>> {
 		try {
 			const raw = await AsyncStorage.getItem(storageKey);
 			if (raw) {
-				const cached = JSON.parse(raw) as { data: Awaited<ReturnType<T[K]['loader']>>; expires: number };
+				const cached = JSON.parse(raw) as {
+					data: Awaited<ReturnType<T[K]['loader']>>;
+					expires: number;
+				};
 				if (cached.expires > Date.now()) {
 					return cached.data;
 				}
@@ -81,4 +84,4 @@ const sources = {
 export const cache = new Cache(sources);
 export const load = cache.load.bind(cache);
 
-export * as sources from './sources';
+export * as sources from './sources/index';

@@ -102,4 +102,4 @@ export class Paginator<T> {
 
 export * as models from './robotevents/models';
 
-export * as custom from './custom-wrapper';
+export * as custom from './custom-wrapper.ts';

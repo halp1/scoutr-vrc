@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
+	View,
+	Text,
+	ScrollView,
+	TouchableOpacity,
+	StyleSheet,
+	ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -17,306 +17,329 @@ import { useStorage } from '../../lib/state/storage';
 import { CONSTANTS } from '../../lib/const';
 
 type TeamStats = {
-  team: Team;
-  winRate: number;
-  wins: number;
-  losses: number;
-  ties: number;
-  skillsRank: number | null;
-  skillsScore: number | null;
+	team: Team;
+	winRate: number;
+	wins: number;
+	losses: number;
+	ties: number;
+	skillsRank: number | null;
+	skillsScore: number | null;
 };
 
 const formatEventDate = (event: Event): string => {
-  if (!event.start && !event.end) return 'Date TBD';
-  if (event.start && event.end) {
-    if (event.start.toDateString() === event.end.toDateString())
-      return event.start.toLocaleDateString();
-    return `${event.start.toLocaleDateString()} - ${event.end.toLocaleDateString()}`;
-  }
-  return (event.start ?? event.end!).toLocaleDateString();
+	if (!event.start && !event.end) return 'Date TBD';
+	if (event.start && event.end) {
+		if (event.start.toDateString() === event.end.toDateString())
+			return event.start.toLocaleDateString();
+		return `${event.start.toLocaleDateString()} - ${event.end.toLocaleDateString()}`;
+	}
+	return (event.start ?? event.end!).toLocaleDateString();
 };
 
 export default function HomeScreen() {
-  const { team: teamNumber, program: programId } = useStorage();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+	const { team: teamNumber, program: programId } = useStorage();
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
+	const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
+	useEffect(() => {
+		let cancelled = false;
 
-    const load = async () => {
-      if (!teamNumber) {
-        setTeamStats(null);
-        setUpcomingEvents([]);
-        setLoading(false);
-        return;
-      }
+		const load = async () => {
+			if (!teamNumber) {
+				setTeamStats(null);
+				setUpcomingEvents([]);
+				setLoading(false);
+				return;
+			}
 
-      setLoading(true);
-      setError(null);
+			setLoading(true);
+			setError(null);
 
-      try {
-        const programs = await re.depaginate(
-          re.program.programGetPrograms({}, re.custom.maxPages),
-          re.models.PaginatedProgramFromJSON
-        );
-        const prog =
-          programs.find((p) => p.id === programId) ??
-          programs.find((p) => p.abbr === 'V5RC') ??
-          programs[0];
+			try {
+				const programs = await re.depaginate(
+					re.program.programGetPrograms({}, re.custom.maxPages),
+					re.models.PaginatedProgramFromJSON
+				);
+				const prog =
+					programs.find((p) => p.id === programId) ??
+					programs.find((p) => p.abbr === 'V5RC') ??
+					programs[0];
 
-        if (!prog || cancelled) return;
+				if (!prog || cancelled) return;
 
-        const seasons = await re.depaginate(
-          re.season.seasonGetSeasons({ program: [prog.id!] }, re.custom.maxPages),
-          re.models.PaginatedSeasonFromJSON
-        );
-        if (cancelled || seasons.length === 0) return;
+				const seasons = await re.depaginate(
+					re.season.seasonGetSeasons({ program: [prog.id!] }, re.custom.maxPages),
+					re.models.PaginatedSeasonFromJSON
+				);
+				if (cancelled || seasons.length === 0) return;
 
-        const season = seasons.reduce((a, b) => (a.end! > b.end! ? a : b));
+				const season = seasons.reduce((a, b) => (a.end! > b.end! ? a : b));
 
-        const candidates = await re.depaginate(
-          re.team.teamGetTeams({ number: [teamNumber], program: [prog.id!] }),
-          re.models.PaginatedTeamFromJSON
-        );
-        const targetTeam =
-          candidates.find((t) => t.number.toLowerCase() === teamNumber.toLowerCase()) ??
-          candidates[0] ??
-          null;
+				const candidates = await re.depaginate(
+					re.team.teamGetTeams({ number: [teamNumber], program: [prog.id!] }),
+					re.models.PaginatedTeamFromJSON
+				);
+				const targetTeam =
+					candidates.find((t) => t.number.toLowerCase() === teamNumber.toLowerCase()) ??
+					candidates[0] ??
+					null;
 
-        if (!targetTeam || cancelled) {
-          setTeamStats(null);
-          setUpcomingEvents([]);
-          setLoading(false);
-          return;
-        }
+				if (!targetTeam || cancelled) {
+					setTeamStats(null);
+					setUpcomingEvents([]);
+					setLoading(false);
+					return;
+				}
 
-        const [details, matches, skills, events] = await Promise.all([
-          re.team.teamGetTeam({ id: targetTeam.id }),
-          re.depaginate(
-            re.team.teamGetMatches({ id: targetTeam.id, season: [season.id!] }, re.custom.maxPages),
-            re.models.PaginatedMatchFromJSON
-          ),
-          re.custom.cache
-            .load('skills.leaderboard', season.id!)
-            .then((leaderboard) => leaderboard.find((e) => e.team.id === targetTeam.id) ?? null),
-          re.depaginate(
-            re.team.teamGetEvents({ id: targetTeam.id, season: [season.id!], start: new Date() }),
-            re.models.PaginatedEventFromJSON
-          ),
-        ]);
+				const [details, matches, skills, events] = await Promise.all([
+					re.team.teamGetTeam({ id: targetTeam.id }),
+					re.depaginate(
+						re.team.teamGetMatches({ id: targetTeam.id, season: [season.id!] }, re.custom.maxPages),
+						re.models.PaginatedMatchFromJSON
+					),
+					re.custom.cache
+						.load('skills.leaderboard', season.id!)
+						.then((leaderboard) => leaderboard.find((e) => e.team.id === targetTeam.id) ?? null),
+					re.depaginate(
+						re.team.teamGetEvents({ id: targetTeam.id, season: [season.id!], start: new Date() }),
+						re.models.PaginatedEventFromJSON
+					)
+				]);
 
-        if (cancelled) return;
+				if (cancelled) return;
 
-        const matchTotals = matches.reduce(
-          (acc, match) => {
-            const alliance = match.alliances.find((a) =>
-              a.teams.some((t) => t.team?.id === targetTeam.id)
-            );
-            const opposite = match.alliances.find((a) => a.color !== alliance?.color);
-            if (!alliance || !opposite) return acc;
-            if (alliance.score > opposite.score) acc.wins += 1;
-            else if (alliance.score < opposite.score) acc.losses += 1;
-            else acc.ties += 1;
-            return acc;
-          },
-          { wins: 0, losses: 0, ties: 0 }
-        );
+				const matchTotals = matches.reduce(
+					(acc, match) => {
+						const alliance = match.alliances.find((a) =>
+							a.teams.some((t) => t.team?.id === targetTeam.id)
+						);
+						const opposite = match.alliances.find((a) => a.color !== alliance?.color);
+						if (!alliance || !opposite) return acc;
+						if (alliance.score > opposite.score) acc.wins += 1;
+						else if (alliance.score < opposite.score) acc.losses += 1;
+						else acc.ties += 1;
+						return acc;
+					},
+					{ wins: 0, losses: 0, ties: 0 }
+				);
 
-        const total = matchTotals.wins + matchTotals.losses + matchTotals.ties;
-        const winRate = total > 0 ? (matchTotals.wins / total) * 100 : 0;
+				const total = matchTotals.wins + matchTotals.losses + matchTotals.ties;
+				const winRate = total > 0 ? (matchTotals.wins / total) * 100 : 0;
 
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-        const futureEvents = events
-          .filter((e) => {
-            const d = e.start ?? e.end;
-            return d ? d >= now : false;
-          })
-          .sort(
-            (a, b) =>
-              ((a.start ?? a.end)?.getTime() ?? Infinity) -
-              ((b.start ?? b.end)?.getTime() ?? Infinity)
-          );
+				const now = new Date();
+				now.setHours(0, 0, 0, 0);
+				const futureEvents = events
+					.filter((e) => {
+						const d = e.start ?? e.end;
+						return d ? d >= now : false;
+					})
+					.sort(
+						(a, b) =>
+							((a.start ?? a.end)?.getTime() ?? Infinity) -
+							((b.start ?? b.end)?.getTime() ?? Infinity)
+					);
 
-        setTeamStats({
-          team: details,
-          winRate,
-          ...matchTotals,
-          skillsRank: skills?.rank ?? null,
-          skillsScore: skills?.scores?.score ?? null,
-        });
-        setUpcomingEvents(futureEvents);
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
+				setTeamStats({
+					team: details,
+					winRate,
+					...matchTotals,
+					skillsRank: skills?.rank ?? null,
+					skillsScore: skills?.scores?.score ?? null
+				});
+				setUpcomingEvents(futureEvents);
+			} catch (e) {
+				if (!cancelled) setError((e as Error).message);
+			} finally {
+				if (!cancelled) setLoading(false);
+			}
+		};
 
-    load();
-    return () => { cancelled = true; };
-  }, [teamNumber, programId]);
+		load();
+		return () => {
+			cancelled = true;
+		};
+	}, [teamNumber, programId]);
 
-  const featuredEvent = upcomingEvents[0] ?? null;
-  const futureEvents = upcomingEvents.slice(1);
+	const featuredEvent = upcomingEvents[0] ?? null;
+	const futureEvents = upcomingEvents.slice(1);
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <Section label="Upcoming Competition">
-          {loading ? (
-            <Card><ActivityIndicator color={colors.primary} /></Card>
-          ) : featuredEvent ? (
-            <TouchableOpacity
-              style={[styles.card, styles.cardPrimary]}
-              onPress={() => router.push(`/events/${featuredEvent.id}`)}
-            >
-              <View style={styles.cardRow}>
-                <Text style={styles.eventName} numberOfLines={2}>{featuredEvent.name}</Text>
-                <ArrowRight size={18} color={colors.primary} />
-              </View>
-              <Text style={styles.eventLocation}>
-                {featuredEvent.location?.city}, {featuredEvent.location?.region}
-              </Text>
-              <Text style={styles.eventDate}>{formatEventDate(featuredEvent)}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Card><Text style={styles.empty}>No upcoming competitions found.</Text></Card>
-          )}
-        </Section>
+	return (
+		<SafeAreaView style={styles.safe} edges={['top']}>
+			<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+				<Section label="Upcoming Competition">
+					{loading ? (
+						<Card>
+							<ActivityIndicator color={colors.primary} />
+						</Card>
+					) : featuredEvent ? (
+						<TouchableOpacity
+							style={[styles.card, styles.cardPrimary]}
+							onPress={() => router.push(`/events/${featuredEvent.id}`)}
+						>
+							<View style={styles.cardRow}>
+								<Text style={styles.eventName} numberOfLines={2}>
+									{featuredEvent.name}
+								</Text>
+								<ArrowRight size={18} color={colors.primary} />
+							</View>
+							<Text style={styles.eventLocation}>
+								{featuredEvent.location?.city}, {featuredEvent.location?.region}
+							</Text>
+							<Text style={styles.eventDate}>{formatEventDate(featuredEvent)}</Text>
+						</TouchableOpacity>
+					) : (
+						<Card>
+							<Text style={styles.empty}>No upcoming competitions found.</Text>
+						</Card>
+					)}
+				</Section>
 
-        <Section label="Team Snapshot">
-          {loading ? (
-            <Card><ActivityIndicator color={colors.primary} /></Card>
-          ) : teamStats ? (
-            <Card>
-              <Text style={styles.teamNumber}>{teamStats.team.number}</Text>
-              <Text style={styles.teamName}>
-                {teamStats.team.teamName ?? teamStats.team.organization ?? 'Team profile'}
-              </Text>
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <View style={styles.statLabel}>
-                    <Trophy size={14} color={colors.mutedForeground} />
-                    <Text style={styles.statLabelText}>Win Rate</Text>
-                  </View>
-                  <Text style={styles.statValue}>{teamStats.winRate.toFixed(1)}%</Text>
-                  <Text style={styles.statSub}>
-                    {teamStats.wins}-{teamStats.losses}-{teamStats.ties}
-                  </Text>
-                </View>
-                <View style={styles.statBox}>
-                  <View style={styles.statLabel}>
-                    <Gamepad2 size={14} color={colors.mutedForeground} />
-                    <Text style={styles.statLabelText}>Skills</Text>
-                  </View>
-                  <Text style={styles.statValue}>
-                    {teamStats.skillsScore !== null ? teamStats.skillsScore : 'N/A'}
-                  </Text>
-                  <Text style={styles.statSub}>
-                    Rank {teamStats.skillsRank !== null ? `#${teamStats.skillsRank}` : 'N/A'}
-                  </Text>
-                </View>
-              </View>
-            </Card>
-          ) : (
-            <Card>
-              <Text style={styles.empty}>
-                Set a team during onboarding to see team stats and personalized upcoming events.
-              </Text>
-            </Card>
-          )}
-        </Section>
+				<Section label="Team Snapshot">
+					{loading ? (
+						<Card>
+							<ActivityIndicator color={colors.primary} />
+						</Card>
+					) : teamStats ? (
+						<Card>
+							<Text style={styles.teamNumber}>{teamStats.team.number}</Text>
+							<Text style={styles.teamName}>
+								{teamStats.team.teamName ?? teamStats.team.organization ?? 'Team profile'}
+							</Text>
+							<View style={styles.statsRow}>
+								<View style={styles.statBox}>
+									<View style={styles.statLabel}>
+										<Trophy size={14} color={colors.mutedForeground} />
+										<Text style={styles.statLabelText}>Win Rate</Text>
+									</View>
+									<Text style={styles.statValue}>{teamStats.winRate.toFixed(1)}%</Text>
+									<Text style={styles.statSub}>
+										{teamStats.wins}-{teamStats.losses}-{teamStats.ties}
+									</Text>
+								</View>
+								<View style={styles.statBox}>
+									<View style={styles.statLabel}>
+										<Gamepad2 size={14} color={colors.mutedForeground} />
+										<Text style={styles.statLabelText}>Skills</Text>
+									</View>
+									<Text style={styles.statValue}>
+										{teamStats.skillsScore !== null ? teamStats.skillsScore : 'N/A'}
+									</Text>
+									<Text style={styles.statSub}>
+										Rank {teamStats.skillsRank !== null ? `#${teamStats.skillsRank}` : 'N/A'}
+									</Text>
+								</View>
+							</View>
+						</Card>
+					) : (
+						<Card>
+							<Text style={styles.empty}>
+								Set a team during onboarding to see team stats and personalized upcoming events.
+							</Text>
+						</Card>
+					)}
+				</Section>
 
-        {futureEvents.length > 0 && (
-          <Section label="Future Events">
-            {futureEvents.map((event) => (
-              <TouchableOpacity
-                key={event.id}
-                style={[styles.card, { marginBottom: 8 }]}
-                onPress={() => router.push(`/events/${event.id}`)}
-              >
-                <View style={styles.cardRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.eventNameSm} numberOfLines={2}>{event.name}</Text>
-                    <Text style={styles.eventDate}>{formatEventDate(event)}</Text>
-                  </View>
-                  <ArrowRight size={16} color={colors.mutedForeground} />
-                </View>
-              </TouchableOpacity>
-            ))}
-          </Section>
-        )}
+				{futureEvents.length > 0 && (
+					<Section label="Future Events">
+						{futureEvents.map((event) => (
+							<TouchableOpacity
+								key={event.id}
+								style={[styles.card, { marginBottom: 8 }]}
+								onPress={() => router.push(`/events/${event.id}`)}
+							>
+								<View style={styles.cardRow}>
+									<View style={{ flex: 1 }}>
+										<Text style={styles.eventNameSm} numberOfLines={2}>
+											{event.name}
+										</Text>
+										<Text style={styles.eventDate}>{formatEventDate(event)}</Text>
+									</View>
+									<ArrowRight size={16} color={colors.mutedForeground} />
+								</View>
+							</TouchableOpacity>
+						))}
+					</Section>
+				)}
 
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  );
+				{error && (
+					<View style={styles.errorBox}>
+						<Text style={styles.errorText}>{error}</Text>
+					</View>
+				)}
+			</ScrollView>
+		</SafeAreaView>
+	);
 }
 
 const Section = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <View style={styles.section}>
-    <Text style={styles.sectionLabel}>{label}</Text>
-    {children}
-  </View>
+	<View style={styles.section}>
+		<Text style={styles.sectionLabel}>{label}</Text>
+		{children}
+	</View>
 );
 
 const Card = ({ children }: { children: React.ReactNode }) => (
-  <View style={styles.card}>{children}</View>
+	<View style={styles.card}>{children}</View>
 );
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { flex: 1 },
-  content: { padding: spacing.md, paddingBottom: spacing['3xl'] },
-  section: { marginBottom: spacing.xl },
-  sectionLabel: {
-    fontSize: font.sm,
-    fontWeight: '500',
-    color: colors.mutedForeground,
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  cardPrimary: { borderColor: colors.primary },
-  cardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  eventName: { flex: 1, fontSize: font.xl, fontWeight: '600', color: colors.foreground, lineHeight: 28 },
-  eventNameSm: { fontSize: font.base, fontWeight: '500', color: colors.foreground, marginBottom: 2 },
-  eventLocation: { fontSize: font.md, color: colors.foreground, marginTop: 4 },
-  eventDate: { fontSize: font.md, color: colors.mutedForeground, marginTop: 2 },
-  teamNumber: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground },
-  teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2, marginBottom: 12 },
-  statsRow: { flexDirection: 'row', gap: 12 },
-  statBox: {
-    flex: 1,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  statLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  statLabelText: { fontSize: font.sm, color: colors.mutedForeground },
-  statValue: { fontSize: font.xl, fontWeight: '600', color: colors.foreground },
-  statSub: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
-  empty: { color: colors.mutedForeground },
-  errorBox: {
-    backgroundColor: colors.destructive + '20',
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  errorText: { color: colors.destructive },
+	safe: { flex: 1, backgroundColor: colors.background },
+	scroll: { flex: 1 },
+	content: { padding: spacing.md, paddingBottom: spacing['3xl'] },
+	section: { marginBottom: spacing.xl },
+	sectionLabel: {
+		fontSize: font.sm,
+		fontWeight: '500',
+		color: colors.mutedForeground,
+		letterSpacing: 0.5,
+		marginBottom: 8,
+		textTransform: 'uppercase'
+	},
+	card: {
+		backgroundColor: colors.card,
+		borderRadius: radius.lg,
+		borderWidth: 1,
+		borderColor: colors.border,
+		padding: spacing.md
+	},
+	cardPrimary: { borderColor: colors.primary },
+	cardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+	eventName: {
+		flex: 1,
+		fontSize: font.xl,
+		fontWeight: '600',
+		color: colors.foreground,
+		lineHeight: 28
+	},
+	eventNameSm: {
+		fontSize: font.base,
+		fontWeight: '500',
+		color: colors.foreground,
+		marginBottom: 2
+	},
+	eventLocation: { fontSize: font.md, color: colors.foreground, marginTop: 4 },
+	eventDate: { fontSize: font.md, color: colors.mutedForeground, marginTop: 2 },
+	teamNumber: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground },
+	teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2, marginBottom: 12 },
+	statsRow: { flexDirection: 'row', gap: 12 },
+	statBox: {
+		flex: 1,
+		borderRadius: radius.md,
+		borderWidth: 1,
+		borderColor: colors.border,
+		padding: spacing.md
+	},
+	statLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+	statLabelText: { fontSize: font.sm, color: colors.mutedForeground },
+	statValue: { fontSize: font.xl, fontWeight: '600', color: colors.foreground },
+	statSub: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
+	empty: { color: colors.mutedForeground },
+	errorBox: {
+		backgroundColor: colors.destructive + '20',
+		borderRadius: radius.md,
+		padding: spacing.md
+	},
+	errorText: { color: colors.destructive }
 });
