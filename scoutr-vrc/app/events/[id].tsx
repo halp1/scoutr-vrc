@@ -24,12 +24,12 @@ import type {
 	Division
 } from '../../lib/robotevents/robotevents/models';
 import { SkillType } from '../../lib/robotevents/robotevents/models';
-import { ScheduleTab } from './components/ScheduleTab';
-import { RankingsTab } from './components/RankingsTab';
-import { SkillsTab } from './components/SkillsTab';
-import { InfoTab } from './components/InfoTab';
-import { TeamDrawer } from './components/TeamDrawer';
-import { MatchDrawer } from './components/MatchDrawer';
+import { ScheduleTab } from '../../lib/components/events/ScheduleTab';
+import { RankingsTab } from '../../lib/components/events/RankingsTab';
+import { SkillsTab } from '../../lib/components/events/SkillsTab';
+import { InfoTab } from '../../lib/components/events/InfoTab';
+import { TeamDrawer } from '../../lib/components/events/TeamDrawer';
+import { MatchDrawer } from '../../lib/components/events/MatchDrawer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

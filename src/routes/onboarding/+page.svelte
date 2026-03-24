@@ -145,8 +145,7 @@
 				supabase.auth.signInWithOAuth({
 					provider: 'discord',
 					options: {
-						// redirectTo: `${window.location.origin}/callback/auth`
-						redirectTo: location.href
+						redirectTo: `${window.location.origin}/callback/auth`
 					}
 				});
 			}}
@@ -165,8 +164,7 @@
 				supabase.auth.signInWithOAuth({
 					provider: 'github',
 					options: {
-						// redirectTo: `${window.location.origin}/callback/auth`
-						redirectTo: location.href
+						redirectTo: `${window.location.origin}/callback/auth`
 					}
 				});
 			}}
@@ -182,9 +180,13 @@
 
 		<button
 			class="mx-auto mt-2 w-full cursor-pointer text-sm text-gray-500 underline"
-			onclick={() => {
-				$storage.auth = null;
-				$storage.onboarding.account = true;
+			onclick={async () => {
+				storage.update((s) => {
+					s.auth = null;
+					s.onboarding.account = true;
+					return s;
+				});
+				await goto('/');
 			}}
 		>
 			Skip this step

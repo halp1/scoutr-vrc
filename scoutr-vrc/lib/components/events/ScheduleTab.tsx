@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
-import { colors, font } from '../../../lib/theme';
+import { colors, font } from '../../theme';
 import { MatchRow } from './MatchRow';
 
 type ScheduleRow = {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { colors, font, radius, spacing } from '../../../lib/theme';
+import { colors, font, radius, spacing } from '../../theme';
 
 type RankingRow = {
 	rank: number;

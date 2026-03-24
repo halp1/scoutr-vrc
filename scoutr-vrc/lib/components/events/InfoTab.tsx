@@ -9,8 +9,8 @@ import {
 	StyleSheet,
 	Linking
 } from 'react-native';
-import { colors, font, radius, spacing } from '../../../lib/theme';
-import type { Award } from '../../../lib/robotevents/robotevents/models';
+import { colors, font, radius, spacing } from '../../theme';
+import type { Award } from '../../robotevents/robotevents/models';
 
 type EventInfo = {
 	name: string;

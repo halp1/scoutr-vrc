@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, font } from '../../../lib/theme';
+import { colors, font } from '../../theme';
 
 type MatchRowData = {
 	match: string;

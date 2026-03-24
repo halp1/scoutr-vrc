@@ -18,25 +18,35 @@
 	});
 
 	onMount(() => {
-		ready.then(async () => {
-			const {
-				data: { session }
-			} = await supabase.auth.getSession();
+		let navigated = false;
 
-			// if (authState.error.code || !authState.code || !authState.state) return;
-
-			// const { data, error } = await supabase.auth.exchangeCodeForSession(authState.code);
-
-			// if (error || !data.session) {
-			// 	authState.error.description = error?.message || 'Unknown error';
-			// 	return;
-			// }
-
-			// storage.update((s) => {
-			// 	s.auth = data.session;
-			// 	return s;
-			// });
+		const {
+			data: { subscription }
+		} = supabase.auth.onAuthStateChange(async (event, session) => {
+			if (navigated || event !== 'SIGNED_IN' || !session) return;
+			navigated = true;
+			await ready;
+			storage.update((s) => {
+				s.auth = session;
+				s.onboarding.account = true;
+				return s;
+			});
+			await goto('/');
 		});
+
+		supabase.auth.getSession().then(async ({ data: { session } }) => {
+			if (navigated || !session) return;
+			navigated = true;
+			await ready;
+			storage.update((s) => {
+				s.auth = session;
+				s.onboarding.account = true;
+				return s;
+			});
+			await goto('/');
+		});
+
+		return () => subscription.unsubscribe();
 	});
 </script>
 

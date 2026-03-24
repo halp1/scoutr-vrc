@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
-import { colors, font, radius, spacing } from '../../../lib/theme';
+import { colors, font, radius, spacing } from '../../theme';
 
 type ScheduleRow = {
 	group: 'practice' | 'qualifier' | 'elimination';

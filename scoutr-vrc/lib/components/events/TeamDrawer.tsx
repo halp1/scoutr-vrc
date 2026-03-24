@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
 import { Gamepad2, Terminal, Trophy } from 'lucide-react-native';
-import { colors, font, radius, spacing } from '../../../lib/theme';
+import { colors, font, radius, spacing } from '../../theme';
 import { MatchRow } from './MatchRow';
 
 type TeamSummary = {
