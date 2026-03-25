@@ -58,39 +58,18 @@
 		});
 	});
 
-	let routes = $state([
-		$storage.team
-			? {
-					path: '/',
-					name: 'Home',
-					icon: House
-				}
-			: null,
-
-		{
-			path: '/favorites',
-			name: 'Favorites',
-			icon: Star
-		},
-		{
-			path: '/explore',
-			name: 'explore',
-			icon: Compass
-		},
-		{
-			path: '/account',
-			name: 'Account',
-			icon: User2
-		}
-	]);
+	const allRoutes = [
+		{ path: '/', name: 'Home', icon: House },
+		{ path: '/favorites', name: 'Favorites', icon: Star },
+		{ path: '/explore', name: 'Explore', icon: Compass },
+		{ path: '/account', name: 'Account', icon: User2 }
+	];
 
 	let dyanmicRoutes = $derived(
-		routes
-			.filter((r) => r !== null)
-			.map((r) => ({
-				...r,
-				active: r.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(r.path)
-			}))
+		allRoutes.map((r) => ({
+			...r,
+			active: r.path === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(r.path)
+		}))
 	);
 
 	let navbarHidden = $derived(!dyanmicRoutes.some((r) => r.active));
@@ -109,7 +88,7 @@
 			class="grid items-center overflow-y-auto transition-all"
 			class:h-12={!navbarHidden}
 			class:h-0={navbarHidden}
-			style="grid-template-columns: repeat({routes.length}, minmax(0, 1fr));"
+			style="grid-template-columns: repeat({allRoutes.length}, minmax(0, 1fr));"
 		>
 			{#each dyanmicRoutes as route}
 				<a

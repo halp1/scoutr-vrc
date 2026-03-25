@@ -5,13 +5,14 @@ import {
 	TextInput,
 	TouchableOpacity,
 	ScrollView,
+	FlatList,
 	StyleSheet,
 	ActivityIndicator,
 	Modal,
 	Pressable,
 	Platform
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
 	ArrowRight,
@@ -23,8 +24,9 @@ import {
 } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { re } from '../../lib/robotevents';
-import type { Team } from '../../lib/robotevents/robotevents/models';
 import type { SearchEvent, EventRegion, EventDate } from '../../lib/robotevents/events';
+import { PaginatedEventFromJSON } from '../../lib/robotevents/robotevents/models';
+import { TeamCard } from '../../lib/components/TeamCard';
 import { useStorage } from '../../lib/state/storage';
 import { CONSTANTS } from '../../lib/const';
 
@@ -54,6 +56,7 @@ const formatDate = (d: Date) =>
 
 export default function ExploreScreen() {
 	const { program: programId } = useStorage();
+	const insets = useSafeAreaInsets();
 
 	const [query, setQuery] = useState('');
 	const [type, setType] = useState<SearchType>('all');
@@ -61,6 +64,7 @@ export default function ExploreScreen() {
 	const [fromDate, setFromDate] = useState<Date>(oneYearAgo());
 	const [toDate, setToDate] = useState<Date>(oneYearAhead());
 	const [filterOpen, setFilterOpen] = useState(false);
+	const [regionSearch, setRegionSearch] = useState('');
 	const [eventsPage, setEventsPage] = useState(1);
 
 	const [programs, setPrograms] = useState<{ id: number; abbr: string }[]>([]);
@@ -68,7 +72,7 @@ export default function ExploreScreen() {
 	const [season, setSeason] = useState<number | null>(null);
 	const [regions, setRegions] = useState<EventRegion[]>([]);
 
-	const [teams, setTeams] = useState<Team[] | null>(null);
+	const [teams, setTeams] = useState<{ id: number }[] | null>(null);
 	const [events, setEvents] = useState<SearchEvent[] | null>(null);
 	const [totalPages, setTotalPages] = useState(1);
 	const [loadPageFn, setLoadPageFn] = useState<((page: number) => Promise<SearchEvent[]>) | null>(
@@ -138,10 +142,12 @@ export default function ExploreScreen() {
 			(async () => {
 				const teamsPromise =
 					t === 'all' || t === 'teams'
-						? re.depaginate(
-								re.team.teamGetTeams({ number: [q], program: [prog] }),
-								re.models.PaginatedTeamFromJSON
-							)
+						? re
+								.depaginate(
+									re.team.teamGetTeams({ number: [q], program: [prog] }),
+									re.models.PaginatedTeamFromJSON
+								)
+								.then((teams) => teams.map((t) => ({ id: t.id! })))
 						: Promise.resolve(null);
 
 				const eventsPromise =
@@ -210,6 +216,19 @@ export default function ExploreScreen() {
 		}
 	};
 
+	const navigateToEvent = async (sku: string) => {
+		try {
+			const results = await re.depaginate(
+				re.events.eventGetEvents({ sku: [sku] }),
+				PaginatedEventFromJSON
+			);
+			const eventId = results[0]?.id;
+			if (eventId) router.push(`/events/${eventId}`);
+		} catch {
+			// ignore navigation errors
+		}
+	};
+
 	const hasResults = (teams?.length ?? 0) + (events?.length ?? 0) > 0;
 
 	return (
@@ -234,7 +253,13 @@ export default function ExploreScreen() {
 							</TouchableOpacity>
 						)}
 					</View>
-					<TouchableOpacity style={styles.filterBtn} onPress={() => setFilterOpen(true)}>
+					<TouchableOpacity
+						style={styles.filterBtn}
+						onPress={() => {
+							setRegionSearch('');
+							setFilterOpen(true);
+						}}
+					>
 						<SlidersHorizontal size={18} color={region ? colors.primary : colors.foreground} />
 					</TouchableOpacity>
 				</View>
@@ -275,14 +300,8 @@ export default function ExploreScreen() {
 					<View style={styles.section}>
 						<Text style={styles.sectionLabel}>Teams</Text>
 						{teams.map((team) => (
-							<View key={team.id} style={[styles.card, { marginBottom: 8 }]}>
-								<Text style={styles.teamNum}>{team.number}</Text>
-								<Text style={styles.teamName}>{team.teamName ?? team.organization ?? ''}</Text>
-								{team.location && (
-									<Text style={styles.meta}>
-										{[team.location.city, team.location.region].filter(Boolean).join(', ')}
-									</Text>
-								)}
+							<View key={team.id} style={{ marginBottom: 12 }}>
+								<TeamCard id={team.id} season={season!} currentSeason={season!} />
 							</View>
 						))}
 					</View>
@@ -295,6 +314,7 @@ export default function ExploreScreen() {
 							<TouchableOpacity
 								key={`${event.sku}-${i}`}
 								style={[styles.card, { marginBottom: 8 }]}
+								onPress={() => navigateToEvent(event.sku)}
 							>
 								<View style={styles.cardRow}>
 									<View style={{ flex: 1 }}>
@@ -349,51 +369,68 @@ export default function ExploreScreen() {
 			<Modal
 				visible={filterOpen}
 				transparent
+				statusBarTranslucent
 				animationType="slide"
 				onRequestClose={() => setFilterOpen(false)}
 			>
-				<Pressable style={styles.backdrop} onPress={() => setFilterOpen(false)} />
-				<View style={styles.sheet}>
-					<View style={styles.sheetHandle} />
-					<Text style={styles.sheetTitle}>Filters</Text>
+				<View style={styles.modalContainer}>
+					<Pressable style={styles.backdrop} onPress={() => setFilterOpen(false)} />
+					<View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+						<View style={styles.sheetHandle} />
+						<Text style={styles.sheetTitle}>Filters</Text>
 
-					<Text style={styles.filterLabel}>Region</Text>
-					<ScrollView
-						horizontal
-						showsHorizontalScrollIndicator={false}
-						style={{ marginBottom: 16 }}
-					>
-						<View style={{ flexDirection: 'row', gap: 8 }}>
-							<TouchableOpacity
-								style={[styles.pill, !region && styles.pillActive]}
-								onPress={() => setRegion('')}
-							>
-								<Text style={[styles.pillText, !region && styles.pillTextActive]}>All</Text>
-							</TouchableOpacity>
-							{regions.map((r) => (
-								<TouchableOpacity
-									key={r.id}
-									style={[styles.pill, region === String(r.id) && styles.pillActive]}
-									onPress={() => setRegion(String(r.id))}
-								>
-									<Text style={[styles.pillText, region === String(r.id) && styles.pillTextActive]}>
-										{r.name}
-									</Text>
-								</TouchableOpacity>
-							))}
+						<Text style={styles.filterLabel}>Region</Text>
+						<View style={styles.regionDropdown}>
+							<View style={styles.regionSearch}>
+								<Search size={14} color={colors.mutedForeground} />
+								<TextInput
+									style={styles.regionSearchInput}
+									placeholder="Search regions..."
+									placeholderTextColor={colors.mutedForeground}
+									value={regionSearch}
+									onChangeText={setRegionSearch}
+									autoCapitalize="none"
+								/>
+								{regionSearch.length > 0 && (
+									<TouchableOpacity onPress={() => setRegionSearch('')}>
+										<X size={14} color={colors.mutedForeground} />
+									</TouchableOpacity>
+								)}
+							</View>
+							<FlatList
+								data={[{ id: 0, name: 'All' }, ...regions].filter((r) =>
+									r.name.toLowerCase().includes(regionSearch.toLowerCase())
+								)}
+								keyExtractor={(r) => String(r.id)}
+								style={styles.regionList}
+								keyboardShouldPersistTaps="handled"
+								renderItem={({ item: r }) => {
+									const active = r.id === 0 ? !region : region === String(r.id);
+									return (
+										<TouchableOpacity
+											style={[styles.regionItem, active && styles.regionItemActive]}
+											onPress={() => setRegion(r.id === 0 ? '' : String(r.id))}
+										>
+											<Text style={[styles.regionItemText, active && styles.regionItemTextActive]}>
+												{r.name}
+											</Text>
+										</TouchableOpacity>
+									);
+								}}
+							/>
 						</View>
-					</ScrollView>
 
-					<TouchableOpacity
-						style={[
-							styles.typeBtn,
-							styles.typeBtnActive,
-							{ alignSelf: 'flex-start', marginTop: 8 }
-						]}
-						onPress={() => setFilterOpen(false)}
-					>
-						<Text style={styles.typeBtnTextActive}>Apply</Text>
-					</TouchableOpacity>
+						<TouchableOpacity
+							style={[
+								styles.typeBtn,
+								styles.typeBtnActive,
+								{ alignSelf: 'flex-start', marginTop: 8 }
+							]}
+							onPress={() => setFilterOpen(false)}
+						>
+							<Text style={styles.typeBtnTextActive}>Apply</Text>
+						</TouchableOpacity>
+					</View>
 				</View>
 			</Modal>
 		</SafeAreaView>
@@ -458,8 +495,6 @@ const styles = StyleSheet.create({
 		padding: spacing.md
 	},
 	cardRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-	teamNum: { fontSize: font.xl, fontWeight: '600', color: colors.foreground },
-	teamName: { fontSize: font.sm, color: colors.foreground, marginTop: 2 },
 	eventName: { fontSize: font.base, fontWeight: '500', color: colors.foreground },
 	meta: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
 	empty: { textAlign: 'center', color: colors.mutedForeground, marginTop: 32 },
@@ -489,13 +524,13 @@ const styles = StyleSheet.create({
 	},
 	pageBtnDisabled: { opacity: 0.4 },
 	pageText: { fontSize: font.sm, color: colors.foreground },
-	backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+	modalContainer: { flex: 1, justifyContent: 'flex-end' as const },
+	backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
 	sheet: {
 		backgroundColor: colors.card,
 		borderTopLeftRadius: 24,
 		borderTopRightRadius: 24,
 		padding: spacing.lg,
-		paddingBottom: 40,
 		maxHeight: '70%'
 	},
 	sheetHandle: {
@@ -508,6 +543,34 @@ const styles = StyleSheet.create({
 	},
 	sheetTitle: { fontSize: font.xl, fontWeight: '600', color: colors.foreground, marginBottom: 16 },
 	filterLabel: { fontSize: font.sm, color: colors.mutedForeground, marginBottom: 8 },
+	regionDropdown: {
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		backgroundColor: colors.background,
+		overflow: 'hidden',
+		marginBottom: 16
+	},
+	regionSearch: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.border
+	},
+	regionSearchInput: { flex: 1, color: colors.foreground, fontSize: font.sm },
+	regionList: { maxHeight: 220 },
+	regionItem: {
+		paddingHorizontal: 14,
+		paddingVertical: 11,
+		borderBottomWidth: StyleSheet.hairlineWidth,
+		borderBottomColor: colors.border
+	},
+	regionItemActive: { backgroundColor: colors.primary + '20' },
+	regionItemText: { fontSize: font.sm, color: colors.foreground },
+	regionItemTextActive: { color: colors.primary, fontWeight: '600' },
 	pill: {
 		paddingHorizontal: 14,
 		paddingVertical: 7,

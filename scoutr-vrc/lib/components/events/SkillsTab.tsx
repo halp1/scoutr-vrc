@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Gamepad2, Terminal } from 'lucide-react-native';
-import { colors, font, radius } from '../../theme';
+import { colors, eventFont as font, radius } from '../../theme';
 
 type SkillsRow = {
 	rank: number;

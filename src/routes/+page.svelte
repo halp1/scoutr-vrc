@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import * as Card from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { CONSTANTS } from '$lib/const';
@@ -200,7 +201,10 @@
 					<Skeleton class="h-5 w-3/4" />
 				</Card.Root>
 			{:else if featuredEvent}
-				<Card.Root class="gap-3 border-primary bg-card px-4 py-5">
+				<Card.Root
+					class="cursor-pointer gap-3 border-primary bg-card px-4 py-5"
+					onclick={() => goto(`/events/${featuredEvent.id}`)}
+				>
 					<div class="flex items-start gap-3">
 						<div
 							class="[display:-webkit-box] min-w-0 flex-1 overflow-hidden text-xl leading-7 font-semibold text-foreground [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
@@ -295,7 +299,10 @@
 			{:else if futureEvents.length > 0}
 				<div class="space-y-2">
 					{#each futureEvents as event}
-						<Card.Root class="gap-3 px-4 py-4">
+						<Card.Root
+							class="cursor-pointer gap-3 px-4 py-4"
+							onclick={() => goto(`/events/${event.id}`)}
+						>
 							<div class="flex items-center gap-3">
 								<div class="min-w-0 flex-1">
 									<div class="truncate text-base font-medium">{event.name}</div>

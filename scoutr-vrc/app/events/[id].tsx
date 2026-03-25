@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+	Animated,
 	View,
 	Text,
 	TouchableOpacity,
+	Pressable,
 	ScrollView,
 	StyleSheet,
 	ActivityIndicator,
+	RefreshControl,
 	Dimensions,
 	NativeScrollEvent,
 	NativeSyntheticEvent
@@ -13,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Clock3, Gamepad2, Info, ListOrdered, Users } from 'lucide-react-native';
-import { colors, font, spacing, radius } from '../../lib/theme';
+import { colors, eventFont as font, spacing, radius } from '../../lib/theme';
 import { re, calculateOprDprCcwm, robotEventsMatchesToScoredMatches } from '../../lib/robotevents';
 import type {
 	MatchObj,
@@ -32,6 +35,7 @@ import { TeamDrawer } from '../../lib/components/events/TeamDrawer';
 import { MatchDrawer } from '../../lib/components/events/MatchDrawer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 4;
 
 type ScheduleRow = {
 	group: 'practice' | 'qualifier' | 'elimination';
@@ -271,6 +275,8 @@ export default function EventScreen() {
 	const [loadingEvent, setLoadingEvent] = useState(false);
 	const [loadingDivision, setLoadingDivision] = useState(false);
 	const [loadError, setLoadError] = useState<string | null>(null);
+	const [refreshKey, setRefreshKey] = useState(0);
+	const [refreshing, setRefreshing] = useState(false);
 
 	const [eventMeta, setEventMeta] = useState<Awaited<
 		ReturnType<typeof re.events.eventGetEvent>
@@ -288,49 +294,69 @@ export default function EventScreen() {
 	const [infoData, setInfoData] = useState<EventInfo>(fallbackInfo);
 	const [divisionSelectorOpen, setDivisionSelectorOpen] = useState(false);
 
-	const [activeIndex, setActiveIndex] = useState(0);
 	const tabScrollRef = useRef<ScrollView>(null);
+
+	const [selectorHeight, setSelectorHeight] = useState(0);
 
 	const [teamDrawerOpen, setTeamDrawerOpen] = useState(false);
 	const [selectedTeam, setSelectedTeam] = useState<RankingRow | null>(null);
 	const [matchDrawerOpen, setMatchDrawerOpen] = useState(false);
 	const [selectedMatch, setSelectedMatch] = useState<ScheduleRow | null>(null);
 
-	const divisionRatings = (() => {
+	const divisionRatings = useMemo(() => {
 		const quals = divisionMatches.filter((m) => m.round === 2);
 		if (quals.length === 0) return null;
 		return calculateOprDprCcwm(robotEventsMatchesToScoredMatches(quals, { includeUnscored: true }));
-	})();
+	}, [divisionMatches]);
 
-	const teamNumberToId = new Map<string, number>(
-		[...teamLookup.entries()].map(([id, info]) => [info.number.toLowerCase(), id])
+	const teamNumberToId = useMemo(
+		() =>
+			new Map<string, number>(
+				[...teamLookup.entries()].map(([id, info]) => [info.number.toLowerCase(), id])
+			),
+		[teamLookup]
 	);
 
-	const normalize = (v: string) => v.trim().toLowerCase();
+	const selectedTeamKey = useMemo(
+		() => (selectedTeam ? selectedTeam.team.trim().toLowerCase() : null),
+		[selectedTeam]
+	);
+	const selectedTeamId = useMemo(
+		() => (selectedTeamKey ? teamNumberToId.get(selectedTeamKey) : undefined),
+		[selectedTeamKey, teamNumberToId]
+	);
 
-	const selectedTeamKey = selectedTeam ? normalize(selectedTeam.team) : null;
-	const selectedTeamId = selectedTeamKey ? teamNumberToId.get(selectedTeamKey) : undefined;
+	const selectedTeamRatings = useMemo(
+		() =>
+			divisionRatings && selectedTeamId !== undefined
+				? {
+						opr: divisionRatings.opr[selectedTeamId] ?? null,
+						dpr: divisionRatings.dpr[selectedTeamId] ?? null,
+						ccwm: divisionRatings.ccwm[selectedTeamId] ?? null
+					}
+				: { opr: null, dpr: null, ccwm: null },
+		[divisionRatings, selectedTeamId]
+	);
 
-	const selectedTeamRatings =
-		divisionRatings && selectedTeamId !== undefined
-			? {
-					opr: divisionRatings.opr[selectedTeamId] ?? null,
-					dpr: divisionRatings.dpr[selectedTeamId] ?? null,
-					ccwm: divisionRatings.ccwm[selectedTeamId] ?? null
-				}
-			: { opr: null, dpr: null, ccwm: null };
+	const selectedTeamSkills = useMemo(
+		() =>
+			selectedTeamKey
+				? (skillsRows.find((r) => r.team.trim().toLowerCase() === selectedTeamKey) ?? null)
+				: null,
+		[selectedTeamKey, skillsRows]
+	);
 
-	const selectedTeamSkills = selectedTeamKey
-		? (skillsRows.find((r) => normalize(r.team) === selectedTeamKey) ?? null)
-		: null;
-
-	const selectedTeamMatches = selectedTeamKey
-		? scheduleRows.filter(
-				(r) =>
-					r.red.some((t) => normalize(t) === selectedTeamKey) ||
-					r.blue.some((t) => normalize(t) === selectedTeamKey)
-			)
-		: [];
+	const selectedTeamMatches = useMemo(
+		() =>
+			selectedTeamKey
+				? scheduleRows.filter(
+						(r) =>
+							r.red.some((t) => t.trim().toLowerCase() === selectedTeamKey) ||
+							r.blue.some((t) => t.trim().toLowerCase() === selectedTeamKey)
+					)
+				: [],
+		[selectedTeamKey, scheduleRows]
+	);
 
 	useEffect(() => {
 		if (!Number.isFinite(eventId) || eventId <= 0) {
@@ -388,7 +414,7 @@ export default function EventScreen() {
 		return () => {
 			cancelled = true;
 		};
-	}, [eventId]);
+	}, [eventId, refreshKey]);
 
 	useEffect(() => {
 		if (!eventMeta || selectedDivisionId === null) return;
@@ -435,16 +461,57 @@ export default function EventScreen() {
 		return () => {
 			cancelled = true;
 		};
-	}, [eventId, selectedDivisionId, eventMeta]);
+	}, [eventId, selectedDivisionId, eventMeta, refreshKey]);
+
+	const onRefresh = useCallback(() => {
+		setRefreshing(true);
+		setEventMeta(null);
+		setRefreshKey((k) => k + 1);
+	}, []);
+
+	useEffect(() => {
+		if (!loadingEvent && !loadingDivision && refreshing) setRefreshing(false);
+	}, [loadingEvent, loadingDivision, refreshing]);
+
+	const activeIndexRef = useRef(0);
+	const scrollX = useRef(new Animated.Value(0)).current;
+	const indicatorTranslateX = useRef(
+		scrollX.interpolate({
+			inputRange: [0, SCREEN_WIDTH * 3],
+			outputRange: [0, TAB_WIDTH * 3],
+			extrapolate: 'clamp'
+		})
+	).current;
+
+	const tabOpacities = useRef(
+		tabMeta.map((_, i) => ({
+			active: scrollX.interpolate({
+				inputRange: [(i - 0.5) * SCREEN_WIDTH, i * SCREEN_WIDTH, (i + 0.5) * SCREEN_WIDTH],
+				outputRange: [0, 1, 0],
+				extrapolate: 'clamp'
+			}),
+			inactive: scrollX.interpolate({
+				inputRange: [(i - 0.5) * SCREEN_WIDTH, i * SCREEN_WIDTH, (i + 0.5) * SCREEN_WIDTH],
+				outputRange: [1, 0, 1],
+				extrapolate: 'clamp'
+			})
+		}))
+	).current;
+
+	const scrollHandler = useRef(
+		Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+			useNativeDriver: true
+		})
+	).current;
+
+	const onScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+		const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+		activeIndexRef.current = index;
+	}, []);
 
 	const goToTab = (index: number) => {
-		setActiveIndex(index);
-		tabScrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
-	};
-
-	const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-		const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-		setActiveIndex(index);
+		activeIndexRef.current = index;
+		(tabScrollRef.current as any)?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
 	};
 
 	const openTeamDrawer = (row: RankingRow) => {
@@ -474,20 +541,42 @@ export default function EventScreen() {
 				<TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
 					<ArrowLeft size={24} color={colors.foreground} />
 				</TouchableOpacity>
-				<TouchableOpacity
-					style={styles.divisionSelector}
-					onPress={() => divisions.length > 1 && setDivisionSelectorOpen(true)}
-				>
-					<Users size={16} color={colors.mutedForeground} />
-					<Text style={styles.divisionText}>{selectedDivisionName}</Text>
-				</TouchableOpacity>
-			</View>
-
-			{isLoading && (
-				<View style={styles.loadingBar}>
-					<ActivityIndicator size="small" color={colors.primary} />
+				<View onLayout={(e) => setSelectorHeight(e.nativeEvent.layout.height)}>
+					<TouchableOpacity
+						style={styles.divisionSelector}
+						onPress={() => divisions.length > 1 && setDivisionSelectorOpen((v) => !v)}
+					>
+						<Users size={16} color={colors.mutedForeground} />
+						<Text style={styles.divisionText}>{selectedDivisionName}</Text>
+					</TouchableOpacity>
+					{divisions.length > 1 && divisionSelectorOpen && (
+						<View style={[styles.divDropdown, { top: selectorHeight + 4 }]}>
+							{divisions.map((div) => (
+								<TouchableOpacity
+									key={div.id}
+									style={[
+										styles.divOption,
+										div.id === selectedDivisionId && styles.divOptionActive
+									]}
+									onPress={() => {
+										setSelectedDivisionId(div.id);
+										setDivisionSelectorOpen(false);
+									}}
+								>
+									<Text
+										style={[
+											styles.divOptionText,
+											div.id === selectedDivisionId && styles.divOptionTextActive
+										]}
+									>
+										{div.name}
+									</Text>
+								</TouchableOpacity>
+							))}
+						</View>
+					)}
 				</View>
-			)}
+			</View>
 
 			{loadError && (
 				<View style={styles.errorBox}>
@@ -496,45 +585,93 @@ export default function EventScreen() {
 			)}
 
 			<View style={styles.tabBar}>
+				<Animated.View
+					style={[styles.tabIndicator, { transform: [{ translateX: indicatorTranslateX }] }]}
+				/>
 				{tabMeta.map((tab, i) => {
 					const Icon = tab.icon;
-					const active = activeIndex === i;
 					return (
-						<TouchableOpacity
-							key={tab.key}
-							style={[styles.tabBtn, active && styles.tabBtnActive]}
-							onPress={() => goToTab(i)}
-						>
-							<Icon
-								size={22}
-								color={active ? colors.primary : colors.mutedForeground}
-								strokeWidth={2.25}
-							/>
-						</TouchableOpacity>
+						<Pressable key={tab.key} style={styles.tabBtn} onPress={() => goToTab(i)}>
+							<View style={styles.tabIconContainer}>
+								<Animated.View style={[styles.tabIconLayer, { opacity: tabOpacities[i].inactive }]}>
+									<Icon size={22} color={colors.mutedForeground} strokeWidth={2.25} />
+								</Animated.View>
+								<Animated.View style={[styles.tabIconLayer, { opacity: tabOpacities[i].active }]}>
+									<Icon size={22} color={colors.primary} strokeWidth={2.25} />
+								</Animated.View>
+							</View>
+						</Pressable>
 					);
 				})}
 			</View>
 
-			<ScrollView
+			{isLoading && (
+				<View style={styles.loadingBar}>
+					<ActivityIndicator size="small" color={colors.primary} />
+				</View>
+			)}
+
+			<Animated.ScrollView
 				ref={tabScrollRef}
 				horizontal
 				pagingEnabled
 				showsHorizontalScrollIndicator={false}
 				scrollEventThrottle={16}
+				onScroll={scrollHandler}
 				onMomentumScrollEnd={onScrollEnd}
 				style={styles.tabPages}
 				decelerationRate="fast"
 			>
-				<ScrollView style={styles.tabPage} contentContainerStyle={styles.tabContent}>
+				<ScrollView
+					style={styles.tabPage}
+					contentContainerStyle={styles.tabContent}
+					refreshControl={
+						<RefreshControl
+							refreshing={refreshing}
+							onRefresh={onRefresh}
+							tintColor={colors.primary}
+						/>
+					}
+				>
 					<ScheduleTab rows={scheduleRows} onMatchSelect={openMatchDrawer} />
 				</ScrollView>
-				<ScrollView style={styles.tabPage} contentContainerStyle={styles.tabContent}>
+				<ScrollView
+					style={styles.tabPage}
+					contentContainerStyle={styles.tabContent}
+					refreshControl={
+						<RefreshControl
+							refreshing={refreshing}
+							onRefresh={onRefresh}
+							tintColor={colors.primary}
+						/>
+					}
+				>
 					<RankingsTab rows={rankingRows} onTeamSelect={openTeamDrawer} />
 				</ScrollView>
-				<ScrollView style={styles.tabPage} contentContainerStyle={styles.tabContent}>
+				<ScrollView
+					style={styles.tabPage}
+					contentContainerStyle={styles.tabContent}
+					refreshControl={
+						<RefreshControl
+							refreshing={refreshing}
+							onRefresh={onRefresh}
+							tintColor={colors.primary}
+						/>
+					}
+				>
 					<SkillsTab rows={skillsRows} />
 				</ScrollView>
-				<ScrollView style={styles.tabPage} contentContainerStyle={styles.tabContent}>
+				<ScrollView
+					style={styles.tabPage}
+					contentContainerStyle={styles.tabContent}
+					refreshControl={
+						<RefreshControl
+							refreshing={refreshing}
+							onRefresh={onRefresh}
+							tintColor={colors.primary}
+						/>
+					}
+				>
 					<InfoTab
 						info={infoData}
 						teams={teamEntries}
@@ -546,31 +683,7 @@ export default function EventScreen() {
 						sku={eventSku}
 					/>
 				</ScrollView>
-			</ScrollView>
-
-			{divisions.length > 1 && divisionSelectorOpen && (
-				<View style={styles.divDropdown}>
-					{divisions.map((div) => (
-						<TouchableOpacity
-							key={div.id}
-							style={[styles.divOption, div.id === selectedDivisionId && styles.divOptionActive]}
-							onPress={() => {
-								setSelectedDivisionId(div.id);
-								setDivisionSelectorOpen(false);
-							}}
-						>
-							<Text
-								style={[
-									styles.divOptionText,
-									div.id === selectedDivisionId && styles.divOptionTextActive
-								]}
-							>
-								{div.name}
-							</Text>
-						</TouchableOpacity>
-					))}
-				</View>
-			)}
+			</Animated.ScrollView>
 
 			<TeamDrawer
 				open={teamDrawerOpen}
@@ -621,9 +734,8 @@ const styles = StyleSheet.create({
 	},
 	divisionText: { fontSize: font.sm, color: colors.foreground },
 	loadingBar: {
-		paddingVertical: 4,
-		paddingHorizontal: spacing.md,
-		alignItems: 'flex-start'
+		paddingVertical: spacing.lg,
+		alignItems: 'center'
 	},
 	errorBox: {
 		marginHorizontal: spacing.md,
@@ -644,8 +756,18 @@ const styles = StyleSheet.create({
 		borderColor: colors.border,
 		overflow: 'hidden'
 	},
-	tabBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
-	tabBtnActive: { backgroundColor: colors.primary + '25' },
+	tabBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+	tabIconContainer: { width: 22, height: 22 },
+	tabIconLayer: { position: 'absolute', top: 0, left: 0 },
+	tabIndicator: {
+		position: 'absolute',
+		top: 0,
+		bottom: 0,
+		left: 0,
+		width: TAB_WIDTH,
+		backgroundColor: colors.primary + '25',
+		borderRadius: radius.xl
+	},
 	tabPages: { flex: 1, marginTop: 8 },
 	tabPage: { width: SCREEN_WIDTH },
 	tabContent: {
@@ -655,8 +777,7 @@ const styles = StyleSheet.create({
 	},
 	divDropdown: {
 		position: 'absolute',
-		top: 60,
-		right: spacing.md,
+		right: 0,
 		backgroundColor: colors.card,
 		borderRadius: radius.lg,
 		borderWidth: 1,

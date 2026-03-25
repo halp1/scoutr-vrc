@@ -59,7 +59,6 @@ export default function RootLayout() {
 				>
 					<Stack.Screen name="(tabs)" />
 					<Stack.Screen name="onboarding" />
-					<Stack.Screen name="events/[id]" />
 				</Stack>
 			</SafeAreaProvider>
 		</GestureHandlerRootView>

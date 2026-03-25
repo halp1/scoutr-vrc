@@ -1,5 +1,6 @@
 import { View, Text, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
-import { colors, font, radius, spacing } from '../../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors, eventFont as font, radius, spacing } from '../../theme';
 
 type ScheduleRow = {
 	group: 'practice' | 'qualifier' | 'elimination';
@@ -41,6 +42,7 @@ const parseScores = (score: string): [number, number] => {
 const normalize = (v: string) => v.trim().toLowerCase();
 
 export const MatchDrawer = ({ open, onClose, row, rankingRows }: Props) => {
+	const insets = useSafeAreaInsets();
 	if (!row) return null;
 
 	const [redScore, blueScore] = parseScores(row.score);
@@ -76,64 +78,72 @@ export const MatchDrawer = ({ open, onClose, row, rankingRows }: Props) => {
 	};
 
 	return (
-		<Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-			<Pressable style={styles.backdrop} onPress={onClose} />
-			<View style={styles.sheet}>
-				<View style={styles.handle} />
-				<ScrollView showsVerticalScrollIndicator={false}>
-					<Text style={styles.heading}>Game Info</Text>
+		<Modal
+			visible={open}
+			transparent
+			statusBarTranslucent
+			animationType="slide"
+			onRequestClose={onClose}
+		>
+			<View style={styles.modalContainer}>
+				<Pressable style={styles.backdrop} onPress={onClose} />
+				<View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+					<View style={styles.handle} />
+					<ScrollView showsVerticalScrollIndicator={false}>
+						<Text style={styles.heading}>Game Info</Text>
 
-					<View style={styles.matchCard}>
-						<Text style={styles.matchName}>{row.match}</Text>
-						<Text style={styles.matchStatus}>{row.played ? 'Played' : 'Scheduled'}</Text>
-						<View style={styles.matchMeta}>
-							<Text style={styles.matchMetaLabel}>Start Time</Text>
-							<Text style={styles.matchMetaVal}>{row.time}</Text>
-						</View>
-						{row.field && (
-							<View style={[styles.matchMeta, { marginTop: 4 }]}>
-								<Text style={styles.matchMetaLabel}>Field</Text>
-								<Text style={styles.matchMetaVal}>{row.field}</Text>
+						<View style={styles.matchCard}>
+							<Text style={styles.matchName}>{row.match}</Text>
+							<Text style={styles.matchStatus}>{row.played ? 'Played' : 'Scheduled'}</Text>
+							<View style={styles.matchMeta}>
+								<Text style={styles.matchMetaLabel}>Start Time</Text>
+								<Text style={styles.matchMetaVal}>{row.time}</Text>
 							</View>
-						)}
-					</View>
-
-					<View style={styles.allianceSection}>
-						<View style={styles.allianceHeader}>
-							<Text style={styles.allianceTitle}>Red Alliance</Text>
-							<Text style={styles.bigScore}>{redScore}</Text>
+							{row.field && (
+								<View style={[styles.matchMeta, { marginTop: 4 }]}>
+									<Text style={styles.matchMetaLabel}>Field</Text>
+									<Text style={styles.matchMetaVal}>{row.field}</Text>
+								</View>
+							)}
 						</View>
-						{row.red.map((team, i) => (
-							<AllianceTeam key={i} teamNumber={team} color="#fca5a5" />
-						))}
-					</View>
 
-					<View style={styles.allianceSection}>
-						<View style={styles.allianceHeader}>
-							<Text style={styles.allianceTitle}>Blue Alliance</Text>
-							<Text style={styles.bigScore}>{blueScore}</Text>
+						<View style={styles.allianceSection}>
+							<View style={styles.allianceHeader}>
+								<Text style={styles.allianceTitle}>Red Alliance</Text>
+								<Text style={styles.bigScore}>{redScore}</Text>
+							</View>
+							{row.red.map((team, i) => (
+								<AllianceTeam key={i} teamNumber={team} color="#fca5a5" />
+							))}
 						</View>
-						{row.blue.map((team, i) => (
-							<AllianceTeam key={i} teamNumber={team} color="#93c5fd" />
-						))}
-						<View style={{ height: 1, backgroundColor: colors.border }} />
-					</View>
 
-					<View style={{ height: 32 }} />
-				</ScrollView>
+						<View style={styles.allianceSection}>
+							<View style={styles.allianceHeader}>
+								<Text style={styles.allianceTitle}>Blue Alliance</Text>
+								<Text style={styles.bigScore}>{blueScore}</Text>
+							</View>
+							{row.blue.map((team, i) => (
+								<AllianceTeam key={i} teamNumber={team} color="#93c5fd" />
+							))}
+							<View style={{ height: 1, backgroundColor: colors.border }} />
+						</View>
+
+						<View style={{ height: 32 }} />
+					</ScrollView>
+				</View>
 			</View>
 		</Modal>
 	);
 };
 
 const styles = StyleSheet.create({
-	backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+	modalContainer: { flex: 1, justifyContent: 'flex-end' as const },
+	backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
 	sheet: {
 		backgroundColor: colors.card,
 		borderTopLeftRadius: 24,
 		borderTopRightRadius: 24,
 		padding: spacing.lg,
-		paddingBottom: 0,
 		maxHeight: '85%'
 	},
 	handle: {

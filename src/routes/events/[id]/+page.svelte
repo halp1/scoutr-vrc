@@ -861,7 +861,7 @@
 		</div>
 		<div class="bg-card px-4 pb-6">
 			{#if isLoading}
-				<div class="mb-3 px-1 text-sm text-muted-foreground">Loading event data...</div>
+				<div class="flex justify-center pt-8 pb-3 text-sm text-muted-foreground">Loading event data...</div>
 			{/if}
 
 			{#if loadError}

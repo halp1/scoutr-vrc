@@ -9,7 +9,7 @@ import {
 	StyleSheet,
 	Linking
 } from 'react-native';
-import { colors, font, radius, spacing } from '../../theme';
+import { colors, eventFont as font, radius, spacing } from '../../theme';
 import type { Award } from '../../robotevents/robotevents/models';
 
 type EventInfo = {

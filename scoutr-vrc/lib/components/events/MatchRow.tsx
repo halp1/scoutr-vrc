@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, font } from '../../theme';
+import { colors, eventFont as font } from '../../theme';
 
 type MatchRowData = {
 	match: string;
@@ -60,11 +60,13 @@ export const MatchRow = ({ row, highlightTeam = null }: Props) => {
 			<Text style={[styles.matchLabel, { color: matchColor }]}>{row.match}</Text>
 
 			<View style={styles.scoreCol}>
-				<Text style={styles.timeTxt}>{row.time}</Text>
-				<View style={styles.scoreRow}>
-					<Text style={styles.redScore}>{redScore}</Text>
-					<Text style={styles.dash}>-</Text>
-					<Text style={styles.blueScore}>{blueScore}</Text>
+				<View style={styles.scoreGrid}>
+					<Text style={styles.timeTxt}>{row.time}</Text>
+					<View style={styles.scoreRow}>
+						<Text style={styles.redScore}>{redScore}</Text>
+						<Text style={styles.dash}>-</Text>
+						<Text style={styles.blueScore}>{blueScore}</Text>
+					</View>
 				</View>
 			</View>
 
@@ -94,27 +96,27 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		borderBottomWidth: 1,
 		borderBottomColor: colors.border,
-		paddingBottom: 8,
-		marginBottom: 2
+		paddingVertical: 6
 	},
-	matchLabel: { width: 40, fontSize: font.xl, fontWeight: '500' },
-	scoreCol: { width: 72 },
-	timeTxt: { fontSize: 10, color: colors.mutedForeground },
-	scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-	redScore: { fontSize: 12, color: '#fca5a5', fontVariant: ['tabular-nums'] },
-	dash: { fontSize: 14, color: colors.mutedForeground },
-	blueScore: { fontSize: 12, color: '#93c5fd', fontVariant: ['tabular-nums'] },
+	matchLabel: { flex: 2, fontSize: font['2xl'], fontWeight: '500' },
+	scoreCol: { flex: 3, alignItems: 'flex-end', paddingRight: 4 },
+	scoreGrid: { gap: 2 },
+	timeTxt: { fontSize: font.base, color: colors.mutedForeground },
+	scoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
+	redScore: { fontSize: font.base, color: '#fca5a5', fontVariant: ['tabular-nums'] },
+	dash: { fontSize: font.base, color: colors.mutedForeground },
+	blueScore: { fontSize: font.base, color: '#93c5fd', fontVariant: ['tabular-nums'] },
 	teamsCol: {
-		flex: 1,
+		flex: 3,
 		flexDirection: 'row',
 		borderLeftWidth: 1,
 		borderLeftColor: colors.border,
 		paddingLeft: 8,
-		gap: 8
+		gap: 12
 	},
 	allianceCol: { flex: 1, gap: 2 },
 	allianceColRight: { flex: 1, gap: 2, alignItems: 'flex-end' },
-	redTeam: { fontSize: 11, color: '#fca5a5', fontVariant: ['tabular-nums'] },
-	blueTeam: { fontSize: 11, color: '#93c5fd', fontVariant: ['tabular-nums'] },
+	redTeam: { fontSize: font.sm, color: '#fca5a5', fontVariant: ['tabular-nums'] },
+	blueTeam: { fontSize: font.sm, color: '#93c5fd', fontVariant: ['tabular-nums'] },
 	highlighted: { fontWeight: '700', textDecorationLine: 'underline' }
 });

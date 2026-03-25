@@ -48,3 +48,16 @@ export const font = {
 	'4xl': 36,
 	'5xl': 48
 };
+
+export const eventFont = {
+	xs: 13,
+	sm: 15,
+	base: 17,
+	md: 19,
+	lg: 21,
+	xl: 23,
+	'2xl': 27,
+	'3xl': 33,
+	'4xl': 39,
+	'5xl': 51
+};

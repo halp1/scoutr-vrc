@@ -1,6 +1,7 @@
 import { View, Text, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gamepad2, Terminal, Trophy } from 'lucide-react-native';
-import { colors, font, radius, spacing } from '../../theme';
+import { colors, eventFont as font, radius, spacing } from '../../theme';
 import { MatchRow } from './MatchRow';
 
 type TeamSummary = {
@@ -55,6 +56,7 @@ export const TeamDrawer = ({
 	dpr = null,
 	ccwm = null
 }: Props) => {
+	const insets = useSafeAreaInsets();
 	if (!team) return null;
 
 	const total = team.wins + team.losses + team.ties;
@@ -66,123 +68,133 @@ export const TeamDrawer = ({
 	const lossPct = total > 0 ? team.losses / total : 0;
 
 	return (
-		<Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
-			<Pressable style={styles.backdrop} onPress={onClose} />
-			<View style={styles.sheet}>
-				<View style={styles.handle} />
-				<ScrollView showsVerticalScrollIndicator={false}>
-					<Text style={styles.teamNum}>{team.team}</Text>
-					<Text style={styles.teamName}>{team.name || 'No team name available'}</Text>
+		<Modal
+			visible={open}
+			transparent
+			statusBarTranslucent
+			animationType="slide"
+			onRequestClose={onClose}
+		>
+			<View style={styles.modalContainer}>
+				<Pressable style={styles.backdrop} onPress={onClose} />
+				<View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+					<View style={styles.handle} />
+					<ScrollView showsVerticalScrollIndicator={false}>
+						<Text style={styles.teamNum}>{team.team}</Text>
+						<Text style={styles.teamName}>{team.name || 'No team name available'}</Text>
 
-					<View style={styles.card}>
-						<View style={styles.rankRow}>
-							<View>
-								<Text style={styles.rankVal}>{team.rank}</Text>
-								<Text style={styles.statLabel}>Rank</Text>
+						<View style={styles.card}>
+							<View style={styles.rankRow}>
+								<View>
+									<Text style={styles.rankVal}>{team.rank}</Text>
+									<Text style={styles.statLabel}>Rank</Text>
+								</View>
+								<View style={styles.rankStats}>
+									<View style={styles.statCol}>
+										<Text style={styles.statVal}>{team.wp}</Text>
+										<Text style={styles.statLabel}>WP</Text>
+									</View>
+									<View style={styles.statCol}>
+										<Text style={styles.statVal}>{team.ap}</Text>
+										<Text style={styles.statLabel}>AP</Text>
+									</View>
+									<View style={styles.statCol}>
+										<Text style={styles.statVal}>{team.sp}</Text>
+										<Text style={styles.statLabel}>SP</Text>
+									</View>
+								</View>
 							</View>
-							<View style={styles.rankStats}>
-								<View style={styles.statCol}>
-									<Text style={styles.statVal}>{team.wp}</Text>
-									<Text style={styles.statLabel}>WP</Text>
+
+							<View style={styles.barContainer}>
+								<View style={styles.bar}>
+									<View style={[styles.barSegment, { flex: winPct, backgroundColor: '#86efac' }]} />
+									<View style={[styles.barSegment, { flex: tiePct, backgroundColor: '#fde047' }]} />
+									<View
+										style={[styles.barSegment, { flex: lossPct, backgroundColor: '#fca5a5' }]}
+									/>
 								</View>
-								<View style={styles.statCol}>
-									<Text style={styles.statVal}>{team.ap}</Text>
-									<Text style={styles.statLabel}>AP</Text>
+								<Text style={styles.wlt}>
+									{team.wins}-{team.losses}-{team.ties}
+								</Text>
+							</View>
+
+							<View style={styles.subRow}>
+								<View style={styles.awpGroup}>
+									<Text style={styles.statVal}>{awps.toFixed(0)}</Text>
+									<Text style={styles.statLabel}>AWP</Text>
+									<Text style={[styles.statVal, { marginTop: 8 }]}>{awpRate.toFixed(1)}%</Text>
+									<Text style={styles.statLabel}>AWP %</Text>
 								</View>
-								<View style={styles.statCol}>
-									<Text style={styles.statVal}>{team.sp}</Text>
-									<Text style={styles.statLabel}>SP</Text>
+								<View style={styles.ratingGroup}>
+									{(
+										[
+											['OPR', opr],
+											['DPR', dpr],
+											['CCWM', ccwm]
+										] as [string, number | null][]
+									).map(([label, val]) => (
+										<View key={label} style={styles.ratingItem}>
+											<Text style={styles.statVal}>{fmt(val)}</Text>
+											<Text style={styles.statLabel}>{label}</Text>
+										</View>
+									))}
 								</View>
 							</View>
 						</View>
 
-						<View style={styles.barContainer}>
-							<View style={styles.bar}>
-								<View style={[styles.barSegment, { flex: winPct, backgroundColor: '#86efac' }]} />
-								<View style={[styles.barSegment, { flex: tiePct, backgroundColor: '#fde047' }]} />
-								<View style={[styles.barSegment, { flex: lossPct, backgroundColor: '#fca5a5' }]} />
+						<View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+							<View style={{ flex: 1 }}>
+								<Text style={styles.skillsScore}>{skills?.points ?? 0}</Text>
+								<Text style={styles.statLabel}>Skills score</Text>
 							</View>
-							<Text style={styles.wlt}>
-								{team.wins}-{team.losses}-{team.ties}
-							</Text>
-						</View>
-
-						<View style={styles.subRow}>
-							<View style={styles.awpGroup}>
-								<Text style={styles.statVal}>{awps.toFixed(0)}</Text>
-								<Text style={styles.statLabel}>AWP</Text>
-								<Text style={[styles.statVal, { marginTop: 8 }]}>{awpRate.toFixed(1)}%</Text>
-								<Text style={styles.statLabel}>AWP %</Text>
-							</View>
-							<View style={styles.ratingGroup}>
+							<View style={styles.skillsRight}>
 								{(
 									[
-										['OPR', opr],
-										['DPR', dpr],
-										['CCWM', ccwm]
-									] as [string, number | null][]
-								).map(([label, val]) => (
-									<View key={label} style={styles.ratingItem}>
-										<Text style={styles.statVal}>{fmt(val)}</Text>
+										[Trophy, 'Rank', skills?.rank ?? 0],
+										[Gamepad2, 'Driver', skills?.driver ?? 0],
+										[Terminal, 'Auto', skills?.auton ?? 0]
+									] as const
+								).map(([Icon, label, val]) => (
+									<View key={label} style={styles.skillItem}>
+										<View style={styles.iconRow}>
+											<Icon size={13} color={colors.foreground} />
+											<Text style={styles.skillVal}>{val}</Text>
+										</View>
 										<Text style={styles.statLabel}>{label}</Text>
 									</View>
 								))}
 							</View>
 						</View>
-					</View>
 
-					<View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
-						<View style={{ flex: 1 }}>
-							<Text style={styles.skillsScore}>{skills?.points ?? 0}</Text>
-							<Text style={styles.statLabel}>Skills score</Text>
-						</View>
-						<View style={styles.skillsRight}>
-							{(
-								[
-									[Trophy, 'Rank', skills?.rank ?? 0],
-									[Gamepad2, 'Driver', skills?.driver ?? 0],
-									[Terminal, 'Auto', skills?.auton ?? 0]
-								] as const
-							).map(([Icon, label, val]) => (
-								<View key={label} style={styles.skillItem}>
-									<View style={styles.iconRow}>
-										<Icon size={13} color={colors.foreground} />
-										<Text style={styles.skillVal}>{val}</Text>
-									</View>
-									<Text style={styles.statLabel}>{label}</Text>
-								</View>
-							))}
-						</View>
-					</View>
+						<Text style={styles.matchesTitle}>Matches</Text>
+						{matches.length === 0 ? (
+							<View style={styles.noMatches}>
+								<Text style={styles.noMatchesText}>No matches found for this team.</Text>
+							</View>
+						) : (
+							<View style={{ gap: 4 }}>
+								{matches.map((row, i) => (
+									<MatchRow key={i} row={row} highlightTeam={team.team} />
+								))}
+							</View>
+						)}
 
-					<Text style={styles.matchesTitle}>Matches</Text>
-					{matches.length === 0 ? (
-						<View style={styles.noMatches}>
-							<Text style={styles.noMatchesText}>No matches found for this team.</Text>
-						</View>
-					) : (
-						<View style={{ gap: 4 }}>
-							{matches.map((row, i) => (
-								<MatchRow key={i} row={row} highlightTeam={team.team} />
-							))}
-						</View>
-					)}
-
-					<View style={{ height: 24 }} />
-				</ScrollView>
+						<View style={{ height: 24 }} />
+					</ScrollView>
+				</View>
 			</View>
 		</Modal>
 	);
 };
 
 const styles = StyleSheet.create({
-	backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+	modalContainer: { flex: 1, justifyContent: 'flex-end' as const },
+	backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
 	sheet: {
 		backgroundColor: colors.card,
 		borderTopLeftRadius: 24,
 		borderTopRightRadius: 24,
 		padding: spacing.lg,
-		paddingBottom: 0,
 		maxHeight: '85%'
 	},
 	handle: {

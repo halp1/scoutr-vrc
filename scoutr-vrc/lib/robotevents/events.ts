@@ -1,5 +1,7 @@
 import { CONSTANTS } from '../const';
 import { cache } from './cache';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parse } from 'node-html-parser';
 
 export interface Country {
 	id: number;
@@ -113,7 +115,6 @@ export interface SearchEvent {
 	type?: string;
 	region?: EventRegion;
 }
-
 const defaultQuery: EventsQuery = {
 	country: null,
 	region: null,
@@ -128,81 +129,241 @@ const defaultQuery: EventsQuery = {
 	eventRegion: null
 };
 
+const COOKIE_STORE_PREFIX = 'robotevents-cookies';
+
+const createAsyncStorageStore = () => ({
+	get: async <T>(key: string): Promise<T | null> => {
+		const raw = await AsyncStorage.getItem(`${COOKIE_STORE_PREFIX}:${key}`);
+		return raw !== null ? (JSON.parse(raw) as T) : null;
+	},
+	set: async (key: string, value: unknown): Promise<void> => {
+		await AsyncStorage.setItem(`${COOKIE_STORE_PREFIX}:${key}`, JSON.stringify(value));
+	},
+	save: async (): Promise<void> => {}
+});
+
+export const cookies = Promise.resolve(createAsyncStorageStore());
+
+interface Cookie {
+	name: string;
+	value: string;
+	expires: number;
+}
+
+const parseSetCookieHeader = (header: string): Cookie | null => {
+	const parts = header.split(';').map((p) => p.trim());
+	const nameValue = parts[0];
+	const eqIdx = nameValue.indexOf('=');
+	if (eqIdx === -1) return null;
+
+	const name = nameValue.slice(0, eqIdx).trim();
+	const value = nameValue.slice(eqIdx + 1).trim();
+	let expires = Date.now() + 24 * 60 * 60 * 1000;
+
+	for (const attr of parts.slice(1)) {
+		const lower = attr.toLowerCase();
+		if (lower.startsWith('max-age=')) {
+			const maxAge = parseInt(attr.slice(8));
+			if (!isNaN(maxAge)) {
+				expires = Date.now() + maxAge * 1000;
+				break;
+			}
+		} else if (lower.startsWith('expires=')) {
+			const date = new Date(attr.slice(8));
+			if (!isNaN(date.getTime())) {
+				expires = date.getTime();
+			}
+		}
+	}
+
+	return { name, value, expires };
+};
+
 export const getEvents = async (
-	query: Omit<Partial<EventsQuery>, 'season'> & { season: number; name: string },
+	query: Omit<Partial<EventsQuery>, 'season'> & { season: number },
 	cancelled: () => boolean
-): Promise<{
-	events: SearchEvent[];
-	pages: number;
-	loadPage: (page: number) => Promise<SearchEvent[]>;
-}> => {
+) => {
 	const q = { ...defaultQuery, ...query };
 
-	const urlBase = 'https://www.robotevents.com/api/v2/events';
-	const loadPage = async (page: number): Promise<SearchEvent[]> => {
-		const params = new URLSearchParams();
-		params.set('per_page', '25');
+	const params = new URLSearchParams();
+	if (q.country) params.append('country_id', q.country.toString());
+	if (q.region) params.append('country_region_id', q.region.toString());
+	if (q.season) params.append('seasonId', q.season.toString());
+	if (q.type) params.append('eventType', q.type.toString());
+	if (q.formats.length > 0) q.formats.forEach((f) => params.append('event_tags[]', f.toString()));
+	if (q.name) params.append('name', q.name);
+	if (q.grade) params.append('grade_level_id', q.grade.id.toString());
+	if (q.level) params.append('level_class_id', q.level.id.toString());
+	if (q.from) params.append('from_date', q.from);
+	if (q.to) params.append('to_date', q.to);
+	if (q.eventRegion) params.append('event_region', q.eventRegion.toString());
+
+	const regionsPromise = loadEventRegions(q.season).catch(() => []);
+	const cookieStore = await cookies;
+
+	const loadPage = async (page: number) => {
+		const storedCookies = (await cookieStore.get<Cookie[]>('cookies')) ?? [];
+		const now = Date.now();
+		const validCookies = storedCookies.filter((c) => c.expires > now);
+
 		params.set('page', page.toString());
-		if (q.season) params.append('season[]', q.season.toString());
-		if (q.name) params.set('name', q.name);
-		if (q.from) params.set('start', q.from);
-		if (q.to) params.set('end', q.to);
 
-		if (cancelled()) throw new Error('Event search cancelled');
+		const target = `https://www.robotevents.com/robot-competitions/${'vex-robotics-competition'}${params.toString().length > 0 ? `?${params.toString()}` : ''}`;
 
-		const res = await fetch(`${urlBase}?${params.toString()}`, {
+		const cookieHeader = validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+
+		const response = await fetch(target, {
 			headers: {
-				Accept: 'application/json',
-				Authorization: `Bearer ${CONSTANTS.ROBOTEVENTS_API_KEY}`
+				'User-Agent':
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+				Authorization: `Bearer ${CONSTANTS.ROBOTEVENTS_API_KEY}`,
+				...(cookieHeader.length > 0 ? { Cookie: cookieHeader } : {}),
+				accept:
+					'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+				'accept-language': 'en-US,en;q=0.9,es-US;q=0.8,es;q=0.7',
+				'cache-control': 'no-cache',
+				pragma: 'no-cache',
+				priority: 'u=0, i',
+				'sec-ch-ua': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+				'sec-ch-ua-mobile': '?0',
+				'sec-ch-ua-platform': '"Windows"',
+				'sec-fetch-dest': 'document',
+				'sec-fetch-mode': 'navigate',
+				'sec-fetch-site': 'none',
+				'sec-fetch-user': '?1',
+				'upgrade-insecure-requests': '1'
 			}
 		});
 
-		if (!res.ok) throw new Error(`RobotEvents API error ${res.status}`);
+		const responseHeaders = response.headers as unknown as Headers;
+		const setCookieValues: string[] =
+			typeof responseHeaders.getSetCookie === 'function'
+				? responseHeaders.getSetCookie()
+				: ([responseHeaders.get('set-cookie')].filter(Boolean) as string[]);
 
-		const raw = await res.json();
-		const events: SearchEvent[] = (raw.data ?? []).map((e: any) => ({
-			name: e.name ?? '',
-			sku: e.sku ?? '',
-			date: [e.start ? new Date(e.start) : null, e.end ? new Date(e.end) : null].filter(
-				Boolean
-			) as Date[],
-			location: e.location
-				? {
-						address: e.location.address1 ?? e.location.venue,
-						city: e.location.city,
-						state: e.location.region,
-						zip: e.location.postcode,
-						country: e.location.country
-					}
-				: null,
-			type: e.event_type ?? e.type
-		}));
+		if (setCookieValues.length > 0) {
+			const newCookies = setCookieValues
+				.map(parseSetCookieHeader)
+				.filter((c): c is Cookie => c !== null);
 
-		return events;
+			const merged = [...validCookies];
+			for (const nc of newCookies) {
+				const idx = merged.findIndex((c) => c.name === nc.name);
+				if (idx !== -1) {
+					merged[idx] = nc;
+				} else {
+					merged.push(nc);
+				}
+			}
+
+			await cookieStore.set('cookies', merged);
+			await cookieStore.save();
+		}
+
+		const raw = await response.text();
+
+		const regions = await regionsPromise;
+
+		const document = parse(raw);
+
+		const parseRobotEventsDate = (s: string): [Date] | [Date, Date] => {
+			const isDualDate = /^\d{1,2}-[A-Za-z]{3}-\d{4} - \d{1,2}-[A-Za-z]{3}-\d{4}$/.test(s);
+
+			if (isDualDate) {
+				const [start, end] = s.split(' - ');
+				return [parseRobotEventsDate(start)[0], parseRobotEventsDate(end)[0]];
+			}
+
+			const [day, mon, year] = s.split('-');
+
+			const months: Record<string, number> = {
+				Jan: 0,
+				Feb: 1,
+				Mar: 2,
+				Apr: 3,
+				May: 4,
+				Jun: 5,
+				Jul: 6,
+				Aug: 7,
+				Sep: 8,
+				Oct: 9,
+				Nov: 10,
+				Dec: 11
+			};
+
+			return [new Date(Number(year), months[mon], Number(day))];
+		};
+
+		const items = document.querySelectorAll('.card-body').slice(1);
+
+		if (document.querySelector('title')?.text === 'Just a moment...') {
+			throw new Error('Cloudflare is blocking event search.\nPlease try again later.');
+		}
+
+		const events = document.querySelector('body')?.text?.includes('No matching events found')
+			? []
+			: items.map((item) => ({
+					name: item.querySelector('a')?.childNodes?.[0]?.text?.trim?.() ?? '',
+					status:
+						item.querySelector('.col-sm-6')?.children[0].text?.replace('Status: ', '').trim() ?? '',
+					spots: parseInt(
+						item.querySelector('.col-sm-6')?.children[1].text?.replace('Spots: ', '').trim() ?? '0'
+					),
+					date: parseRobotEventsDate(
+						item.querySelector('.col-sm-6')?.children[2].text?.replace('Date: ', '').trim() ?? '0'
+					),
+					region: regions.find(
+						(r) =>
+							r.name ===
+							item.querySelector('.col-sm-6')?.children[3].text?.replace('Region: ', '').trim()
+					),
+					sku:
+						item
+							.querySelectorAll('.col-sm-6')[1]
+							?.children[0].text?.replace('Event Code: ', '')
+							.trim() ?? '',
+					type:
+						item.querySelectorAll('.col-sm-6')[1]?.children[1].text?.replace('Type: ', '').trim() ??
+						'',
+					location: (() => {
+						const rawLocation =
+							item
+								.querySelectorAll('.col-sm-6')[1]
+								?.children[2].text?.replace('Location: ', '')
+								.trim() ?? '';
+						if (rawLocation.length === 0) return null;
+
+						const split = rawLocation.split(',').map((s) => s.trim());
+
+						return {
+							address: split[0],
+							city: split[1],
+							state: split[2],
+							zip: split[3],
+							country: split[4]
+						};
+					})()
+				}));
+
+		return {
+			events,
+			pages: parseInt(document.querySelectorAll('.page-item .page-link').at(-2)?.text ?? '1')
+		};
 	};
 
-	const firstPage = await loadPage(1);
+	await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait a second to avoid hitting Cloudflare immediately
+	if (cancelled()) {
+		throw new Error('Event search cancelled');
+	}
 
-	const params = new URLSearchParams();
-	params.set('per_page', '25');
-	params.set('page', '1');
-	if (q.season) params.append('season[]', q.season.toString());
-	if (q.name) params.set('name', q.name);
-	if (q.from) params.set('start', q.from);
-	if (q.to) params.set('end', q.to);
-
-	const metaRes = await fetch(`${urlBase}?${params.toString()}`, {
-		headers: {
-			Accept: 'application/json',
-			Authorization: `Bearer ${CONSTANTS.ROBOTEVENTS_API_KEY}`
-		}
-	});
-	const metaRaw = await metaRes.json();
-	const pages: number = metaRaw.meta?.last_page ?? 1;
+	const res = await loadPage(1);
 
 	return {
-		events: firstPage,
-		pages,
-		loadPage
+		events: res.events,
+		pages: res.pages,
+		loadPage: async (page: number) => {
+			if (page < 1 || page > res.pages) throw new Error('Invalid page number');
+			return (await loadPage(page)).events;
+		}
 	};
 };
