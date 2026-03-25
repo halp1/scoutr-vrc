@@ -1,9 +1,20 @@
-import { useRef } from 'react';
-import { View, Text, ScrollView, Modal, Pressable, StyleSheet, PanResponder } from 'react-native';
+import { useRef, useState, useEffect } from 'react';
+import {
+	View,
+	Text,
+	ScrollView,
+	Modal,
+	Pressable,
+	StyleSheet,
+	PanResponder,
+	TextInput
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gamepad2, Terminal, Trophy } from 'lucide-react-native';
 import { colors, eventFont as font, radius, spacing } from '../../theme';
 import { MatchRow } from './MatchRow';
+import { useStorage } from '../../state/storage';
+import { upsertNote } from '../../supabase/notes';
 
 type TeamSummary = {
 	rank: number;
@@ -58,6 +69,24 @@ export const TeamDrawer = ({
 	ccwm = null
 }: Props) => {
 	const insets = useSafeAreaInsets();
+	const { notes, setNote, auth } = useStorage();
+	const [noteText, setNoteText] = useState(notes[team?.team ?? ''] ?? '');
+	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		setNoteText(notes[team?.team ?? ''] ?? '');
+	}, [team?.team]);
+
+	const handleNoteChange = (value: string) => {
+		setNoteText(value);
+		if (debounceRef.current) clearTimeout(debounceRef.current);
+		debounceRef.current = setTimeout(() => {
+			if (!team) return;
+			setNote(team.team, value);
+			if (auth) upsertNote(team.team, value);
+		}, 1000);
+	};
+
 	const panResponder = useRef(
 		PanResponder.create({
 			onStartShouldSetPanResponder: () => false,
@@ -183,7 +212,17 @@ export const TeamDrawer = ({
 								))}
 							</View>
 						</View>
-
+						<View style={styles.card}>
+							<Text style={styles.notesLabel}>Scout Notes</Text>
+							<TextInput
+								style={styles.notesInput}
+								multiline
+								value={noteText}
+								onChangeText={handleNoteChange}
+								placeholder="Add notes about this team..."
+								placeholderTextColor={colors.mutedForeground}
+							/>
+						</View>
 						<Text style={styles.matchesTitle}>Matches</Text>
 						{matches.length === 0 ? (
 							<View style={styles.noMatches}>
@@ -276,6 +315,18 @@ const styles = StyleSheet.create({
 		fontWeight: '500',
 		color: colors.foreground,
 		marginBottom: 12
+	},
+	notesLabel: {
+		fontSize: font.sm,
+		fontWeight: '500',
+		color: colors.mutedForeground,
+		marginBottom: 8
+	},
+	notesInput: {
+		color: colors.foreground,
+		fontSize: font.sm,
+		minHeight: 80,
+		textAlignVertical: 'top'
 	},
 	noMatches: {
 		borderWidth: 1,

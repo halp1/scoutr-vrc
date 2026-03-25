@@ -9,24 +9,29 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useStorage } from '../lib/state/storage';
 import { supabase } from '../lib/supabase';
+import { fetchAllNotes } from '../lib/supabase/notes';
 import { colors } from '../lib/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
-	const { _hydrated, auth, onboarding, setAuth, setOnboarding } = useStorage();
+	const { _hydrated, auth, onboarding, setAuth, setOnboarding, setAllNotes } = useStorage();
 
 	useEffect(() => {
 		supabase.auth.getSession().then(({ data: { session } }) => {
 			if (session) {
 				setAuth(session);
 				setOnboarding('account', true);
+				fetchAllNotes().then(setAllNotes);
 			}
 		});
 
 		const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
 			setAuth(session);
-			if (session) setOnboarding('account', true);
+			if (session) {
+				setOnboarding('account', true);
+				fetchAllNotes().then(setAllNotes);
+			}
 		});
 
 		return () => listener.subscription.unsubscribe();

@@ -52,9 +52,9 @@ export default function OnboardingScreen() {
 			setSearchingTeam(true);
 			try {
 				const res = await re.depaginate(
-				re.team.teamGetTeams({ number: [teamNumber], program: [selectedProgram.id!] }),
-				re.models.PaginatedTeamFromJSON
-			);
+					re.team.teamGetTeams({ number: [teamNumber], program: [selectedProgram.id!] }),
+					re.models.PaginatedTeamFromJSON
+				);
 				const match =
 					res.find((t) => t.number.toLowerCase() === teamNumber.toLowerCase()) ?? res[0] ?? null;
 				setFoundTeam(match);
@@ -80,6 +80,8 @@ export default function OnboardingScreen() {
 			const params = new URLSearchParams(fragment);
 			const access_token = params.get('access_token');
 			const refresh_token = params.get('refresh_token');
+			const code =
+				params.get('code') ?? new URLSearchParams(result.url.split('?')[1] ?? '').get('code');
 			if (access_token && refresh_token) {
 				const { data: sessionData } = await supabase.auth.setSession({
 					access_token,
@@ -87,6 +89,12 @@ export default function OnboardingScreen() {
 				});
 				if (sessionData.session) {
 					setAuth(sessionData.session);
+					setOnboarding('account', true);
+				}
+			} else if (code) {
+				const { data: exchangeData } = await supabase.auth.exchangeCodeForSession(code);
+				if (exchangeData.session) {
+					setAuth(exchangeData.session);
 					setOnboarding('account', true);
 				}
 			}

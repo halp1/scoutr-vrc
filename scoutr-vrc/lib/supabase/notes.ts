@@ -1,16 +1,22 @@
 import { supabase } from './index';
 
 export const upsertNote = async (teamNumber: string, note: string): Promise<void> => {
-	const { data: { user } } = await supabase.auth.getUser();
+	const {
+		data: { user }
+	} = await supabase.auth.getUser();
 	if (!user) return;
-	await supabase.from('team_notes').upsert(
-		{ user_id: user.id, team_number: teamNumber, note, updated_at: new Date().toISOString() },
-		{ onConflict: 'user_id,team_number' }
-	);
+	await supabase
+		.from('team_notes')
+		.upsert(
+			{ user_id: user.id, team_number: teamNumber, note, updated_at: new Date().toISOString() },
+			{ onConflict: 'user_id,team_number' }
+		);
 };
 
 export const fetchAllNotes = async (): Promise<Record<string, string>> => {
-	const { data: { user } } = await supabase.auth.getUser();
+	const {
+		data: { user }
+	} = await supabase.auth.getUser();
 	if (!user) return {};
 	const { data, error } = await supabase
 		.from('team_notes')

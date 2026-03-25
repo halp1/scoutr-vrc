@@ -71,8 +71,7 @@ export const useStorage = create<AppState>()(
 				set((s) => ({
 					favorites: { ...s.favorites, events: s.favorites.events.filter((e) => e !== id) }
 				})),
-			setNote: (teamNumber, note) =>
-				set((s) => ({ notes: { ...s.notes, [teamNumber]: note } })),
+			setNote: (teamNumber, note) => set((s) => ({ notes: { ...s.notes, [teamNumber]: note } })),
 			setAllNotes: (notes) => set({ notes })
 		}),
 		{

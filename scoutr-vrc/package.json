@@ -15,6 +15,7 @@
     "@types/react-native": "^0.73.0",
     "expo": "~55.0.8",
     "expo-constants": "~55.0.9",
+    "expo-crypto": "~55.0.10",
     "expo-dev-client": "~55.0.18",
     "expo-linking": "~55.0.8",
     "expo-router": "~55.0.7",
