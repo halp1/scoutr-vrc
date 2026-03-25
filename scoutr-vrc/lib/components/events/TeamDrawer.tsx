@@ -15,6 +15,7 @@ import { colors, eventFont as font, radius, spacing } from '../../theme';
 import { MatchRow } from './MatchRow';
 import { useStorage } from '../../state/storage';
 import { upsertNote } from '../../supabase/notes';
+import { fetchTeammateNotes } from '../../supabase/teams';
 
 type TeamSummary = {
 	rank: number;
@@ -69,12 +70,18 @@ export const TeamDrawer = ({
 	ccwm = null
 }: Props) => {
 	const insets = useSafeAreaInsets();
-	const { notes, setNote, auth } = useStorage();
+	const { notes, setNote, auth, scoutingTeam } = useStorage();
 	const [noteText, setNoteText] = useState(notes[team?.team ?? ''] ?? '');
+	const [teammateNotes, setTeammateNotes] = useState<{ displayName: string; note: string }[]>([]);
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		setNoteText(notes[team?.team ?? ''] ?? '');
+		if (team?.team && auth && scoutingTeam) {
+			fetchTeammateNotes(team.team).then(setTeammateNotes);
+		} else {
+			setTeammateNotes([]);
+		}
 	}, [team?.team]);
 
 	const handleNoteChange = (value: string) => {
@@ -223,6 +230,23 @@ export const TeamDrawer = ({
 								placeholderTextColor={colors.mutedForeground}
 							/>
 						</View>
+						{scoutingTeam && (
+							<View style={styles.card}>
+								<Text style={styles.notesLabel}>Team Notes</Text>
+								{teammateNotes.length === 0 ? (
+									<Text style={styles.noTeammateText}>No teammates have noted this team yet.</Text>
+								) : (
+									<View style={{ gap: 10 }}>
+										{teammateNotes.map((n, i) => (
+											<View key={i} style={styles.teammateNote}>
+												<Text style={styles.teammateNoteName}>{n.displayName}</Text>
+												<Text style={styles.teammateNoteText}>{n.note}</Text>
+											</View>
+										))}
+									</View>
+								)}
+							</View>
+						)}
 						<Text style={styles.matchesTitle}>Matches</Text>
 						{matches.length === 0 ? (
 							<View style={styles.noMatches}>
@@ -327,6 +351,26 @@ const styles = StyleSheet.create({
 		fontSize: font.sm,
 		minHeight: 80,
 		textAlignVertical: 'top'
+	},
+	noTeammateText: {
+		fontSize: font.sm,
+		color: colors.mutedForeground,
+		fontStyle: 'italic'
+	},
+	teammateNote: {
+		borderTopWidth: 1,
+		borderTopColor: colors.border,
+		paddingTop: 8
+	},
+	teammateNoteName: {
+		fontSize: font.xs,
+		fontWeight: '600',
+		color: colors.mutedForeground,
+		marginBottom: 2
+	},
+	teammateNoteText: {
+		fontSize: font.sm,
+		color: colors.foreground
 	},
 	noMatches: {
 		borderWidth: 1,

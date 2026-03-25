@@ -10,12 +10,14 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useStorage } from '../lib/state/storage';
 import { supabase } from '../lib/supabase';
 import { fetchAllNotes } from '../lib/supabase/notes';
+import { fetchMyScoutingTeam } from '../lib/supabase/teams';
 import { colors } from '../lib/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
-	const { _hydrated, auth, onboarding, setAuth, setOnboarding, setAllNotes } = useStorage();
+	const { _hydrated, auth, onboarding, setAuth, setOnboarding, setAllNotes, setScoutingTeam } =
+		useStorage();
 
 	useEffect(() => {
 		supabase.auth.getSession().then(({ data: { session } }) => {
@@ -23,6 +25,7 @@ export default function RootLayout() {
 				setAuth(session);
 				setOnboarding('account', true);
 				fetchAllNotes().then(setAllNotes);
+				fetchMyScoutingTeam().then(setScoutingTeam);
 			}
 		});
 
@@ -31,6 +34,7 @@ export default function RootLayout() {
 			if (session) {
 				setOnboarding('account', true);
 				fetchAllNotes().then(setAllNotes);
+				fetchMyScoutingTeam().then(setScoutingTeam);
 			}
 		});
 

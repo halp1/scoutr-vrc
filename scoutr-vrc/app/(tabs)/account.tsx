@@ -1,16 +1,78 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import {
+	View,
+	Text,
+	TouchableOpacity,
+	StyleSheet,
+	ScrollView,
+	Alert,
+	TextInput,
+	ActivityIndicator,
+	Share
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import Svg, { Path } from 'react-native-svg';
-import { LogOut, User } from 'lucide-react-native';
+import { LogOut, User, Users, UserPlus, Share2, DoorOpen } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
 import { useStorage } from '../../lib/state/storage';
+import {
+	createScoutingTeam,
+	joinScoutingTeam,
+	fetchMyInviteCode,
+	fetchTeamMembers,
+	leaveScoutingTeam
+} from '../../lib/supabase/teams';
 
 export default function AccountScreen() {
-	const { auth, setAuth } = useStorage();
+	const { auth, setAuth, scoutingTeam, setScoutingTeam } = useStorage();
+
+	// ── Create form ──────────────────────────────────────────────────────────
+	const [createName, setCreateName] = useState('');
+	const [creating, setCreating] = useState(false);
+	const [createError, setCreateError] = useState('');
+
+	// ── Join form ────────────────────────────────────────────────────────────
+	const [joinCode, setJoinCode] = useState('');
+	const [joining, setJoining] = useState(false);
+	const [joinError, setJoinError] = useState('');
+
+	// ── Team view ────────────────────────────────────────────────────────────
+	const [inviteCode, setInviteCode] = useState<string | null>(null);
+	const [members, setMembers] = useState<{ userId: string; displayName: string }[]>([]);
+	const [timeRemaining, setTimeRemaining] = useState('');
+	const [leaving, setLeaving] = useState(false);
+
+	// Fetch invite code + members when in a team
+	useEffect(() => {
+		if (!scoutingTeam || !auth) return;
+		fetchMyInviteCode().then(setInviteCode);
+		fetchTeamMembers(scoutingTeam.id).then(setMembers);
+
+		const secondsUntilRotation = 3600 - (Math.floor(Date.now() / 1000) % 3600);
+		const rotateTimer = setTimeout(() => {
+			fetchMyInviteCode().then(setInviteCode);
+		}, secondsUntilRotation * 1000);
+
+		return () => clearTimeout(rotateTimer);
+	}, [scoutingTeam, auth]);
+
+	// Countdown timer
+	useEffect(() => {
+		if (!inviteCode) return;
+		const update = () => {
+			const secsRemaining = 3600 - (Math.floor(Date.now() / 1000) % 3600);
+			const m = Math.floor(secsRemaining / 60);
+			const s = secsRemaining % 60;
+			setTimeRemaining(`${m}m ${s.toString().padStart(2, '0')}s`);
+		};
+		update();
+		const ticker = setInterval(update, 1000);
+		return () => clearInterval(ticker);
+	}, [inviteCode]);
 
 	const handleSignOut = () => {
 		Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -55,6 +117,80 @@ export default function AccountScreen() {
 		}
 	};
 
+	const handleCreate = async () => {
+		setCreateError('');
+		if (!createName.trim()) {
+			setCreateError('Enter a team name.');
+			return;
+		}
+		setCreating(true);
+		const { team, error } = await createScoutingTeam(createName.trim());
+		setCreating(false);
+		if (error) {
+			setCreateError(error);
+			return;
+		}
+		if (team) {
+			setScoutingTeam(team);
+			fetchMyInviteCode().then(setInviteCode);
+			fetchTeamMembers(team.id).then(setMembers);
+		}
+	};
+
+	const handleJoin = async () => {
+		setJoinError('');
+		const code = joinCode.trim().toUpperCase().replace(/\s/g, '');
+		if (code.length !== 8) {
+			setJoinError('Enter the full 8-character code.');
+			return;
+		}
+		setJoining(true);
+		const { team, error } = await joinScoutingTeam(code);
+		setJoining(false);
+		if (error) {
+			setJoinError(error);
+			return;
+		}
+		if (team) {
+			setScoutingTeam(team);
+			fetchMyInviteCode().then(setInviteCode);
+			fetchTeamMembers(team.id).then(setMembers);
+		}
+	};
+
+	const handleLeave = () => {
+		if (!scoutingTeam) return;
+		Alert.alert(
+			'Leave team',
+			`Leave "${scoutingTeam.name}"? You can rejoin with the invite code.`,
+			[
+				{ text: 'Cancel', style: 'cancel' },
+				{
+					text: 'Leave',
+					style: 'destructive',
+					onPress: async () => {
+						setLeaving(true);
+						await leaveScoutingTeam(scoutingTeam.id);
+						setLeaving(false);
+						setScoutingTeam(null);
+						setInviteCode(null);
+						setMembers([]);
+					}
+				}
+			]
+		);
+	};
+
+	const handleShareCode = async () => {
+		if (!inviteCode) return;
+		const formatted = inviteCode.slice(0, 4) + ' ' + inviteCode.slice(4);
+		await Share.share({
+			message: `Join my Scoutr scouting team "${scoutingTeam?.name}" with invite code: ${formatted}`
+		});
+	};
+
+	const fmtCode = (code: string) => code.slice(0, 4) + ' ' + code.slice(4);
+
 	if (!auth) {
 		return (
 			<SafeAreaView style={styles.safe} edges={['top']}>
@@ -89,12 +225,13 @@ export default function AccountScreen() {
 			</SafeAreaView>
 		);
 	}
+
 	return (
 		<SafeAreaView style={styles.safe} edges={['top']}>
 			<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 				<Text style={styles.heading}>Account</Text>
 
-				<View style={styles.card}>
+				<View style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
 					<View style={styles.avatar}>
 						<User size={28} color={colors.foreground} />
 					</View>
@@ -105,6 +242,118 @@ export default function AccountScreen() {
 						<Text style={styles.email}>{auth.user.email}</Text>
 					</View>
 				</View>
+
+				{/* ── Scouting Team ─────────────────────────────────── */}
+				<Text style={styles.sectionLabel}>Scouting Team</Text>
+
+				{scoutingTeam ? (
+					<>
+						<View style={styles.card}>
+							<View style={styles.teamHeader}>
+								<Users size={18} color={colors.primary} />
+								<Text style={styles.teamName}>{scoutingTeam.name}</Text>
+							</View>
+
+							{inviteCode ? (
+								<>
+									<Text style={styles.fieldLabel}>Invite Code</Text>
+									<View style={styles.codeRow}>
+										<Text style={styles.codeText} selectable>
+											{fmtCode(inviteCode)}
+										</Text>
+										<TouchableOpacity style={styles.shareBtn} onPress={handleShareCode}>
+											<Share2 size={16} color={colors.primary} />
+										</TouchableOpacity>
+									</View>
+									<Text style={styles.codeHint}>Refreshes in {timeRemaining}</Text>
+								</>
+							) : (
+								<ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} />
+							)}
+
+							{members.length > 0 && (
+								<>
+									<Text style={[styles.fieldLabel, { marginTop: 12 }]}>Members</Text>
+									{members.map((m) => (
+										<Text key={m.userId} style={styles.memberName}>
+											• {m.displayName}
+										</Text>
+									))}
+								</>
+							)}
+						</View>
+
+						<TouchableOpacity style={styles.leaveBtn} onPress={handleLeave} disabled={leaving}>
+							{leaving ? (
+								<ActivityIndicator size="small" color={colors.destructive} />
+							) : (
+								<>
+									<DoorOpen size={16} color={colors.destructive} />
+									<Text style={styles.leaveBtnText}>Leave Team</Text>
+								</>
+							)}
+						</TouchableOpacity>
+					</>
+				) : (
+					<>
+						{/* Create */}
+						<View style={styles.card}>
+							<View style={styles.cardTitleRow}>
+								<Users size={16} color={colors.mutedForeground} />
+								<Text style={styles.cardTitle}>Create a Team</Text>
+							</View>
+							<TextInput
+								style={styles.input}
+								placeholder="Team name"
+								placeholderTextColor={colors.mutedForeground}
+								value={createName}
+								onChangeText={setCreateName}
+							/>
+							{createError ? <Text style={styles.errorText}>{createError}</Text> : null}
+							<TouchableOpacity
+								style={[styles.actionBtn, creating && styles.actionBtnDisabled]}
+								onPress={handleCreate}
+								disabled={creating}
+							>
+								{creating ? (
+									<ActivityIndicator size="small" color={colors.primaryForeground} />
+								) : (
+									<Text style={styles.actionBtnText}>Create Team</Text>
+								)}
+							</TouchableOpacity>
+						</View>
+
+						{/* Join */}
+						<View style={[styles.card, { marginTop: 0 }]}>
+							<View style={styles.cardTitleRow}>
+								<UserPlus size={16} color={colors.mutedForeground} />
+								<Text style={styles.cardTitle}>Join a Team</Text>
+							</View>
+							<TextInput
+								style={[styles.input, { fontFamily: 'monospace', letterSpacing: 2 }]}
+								placeholder="8-character invite code"
+								placeholderTextColor={colors.mutedForeground}
+								value={joinCode}
+								onChangeText={(t) => setJoinCode(t.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+								autoCapitalize="characters"
+								autoCorrect={false}
+								maxLength={8}
+							/>
+							{joinError ? <Text style={styles.errorText}>{joinError}</Text> : null}
+							<TouchableOpacity
+								style={[styles.actionBtn, joining && styles.actionBtnDisabled]}
+								onPress={handleJoin}
+								disabled={joining}
+							>
+								{joining ? (
+									<ActivityIndicator size="small" color={colors.primaryForeground} />
+								) : (
+									<Text style={styles.actionBtnText}>Join Team</Text>
+								)}
+							</TouchableOpacity>
+						</View>
+					</>
+				)}
 
 				<TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
 					<LogOut size={18} color={colors.destructive} />
@@ -145,22 +394,19 @@ const styles = StyleSheet.create({
 		fontWeight: '600'
 	},
 	scroll: { flex: 1 },
-	content: { padding: spacing.md, paddingBottom: spacing['3xl'] },
+	content: { padding: spacing.md, paddingBottom: spacing['3xl'], gap: spacing.md },
 	heading: {
 		fontSize: font['2xl'],
 		fontWeight: '600',
 		color: colors.foreground,
-		marginBottom: spacing.lg
+		marginBottom: 4
 	},
 	card: {
 		backgroundColor: colors.card,
 		borderRadius: radius.lg,
 		borderWidth: 1,
 		borderColor: colors.border,
-		padding: spacing.md,
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 12
+		padding: spacing.md
 	},
 	avatar: {
 		width: 48,
@@ -173,17 +419,78 @@ const styles = StyleSheet.create({
 	info: { flex: 1 },
 	name: { fontSize: font.base, fontWeight: '600', color: colors.foreground },
 	email: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
-	noAccount: { color: colors.mutedForeground },
 	signOutBtn: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		gap: 10,
-		marginTop: spacing.md,
 		backgroundColor: colors.card,
 		borderRadius: radius.lg,
 		borderWidth: 1,
 		borderColor: colors.border,
 		padding: spacing.md
 	},
-	signOutText: { fontSize: font.base, color: colors.destructive }
+	signOutText: { fontSize: font.base, color: colors.destructive },
+	sectionLabel: {
+		fontSize: font.sm,
+		fontWeight: '600',
+		color: colors.mutedForeground,
+		textTransform: 'uppercase',
+		letterSpacing: 0.8,
+		marginTop: 4,
+		marginBottom: -4
+	},
+	teamHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+	teamName: { fontSize: font.lg, fontWeight: '600', color: colors.foreground },
+	fieldLabel: { fontSize: font.xs, color: colors.mutedForeground, marginBottom: 4 },
+	codeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+	codeText: {
+		fontSize: font['2xl'],
+		fontWeight: '700',
+		color: colors.foreground,
+		letterSpacing: 4,
+		fontVariant: ['tabular-nums']
+	},
+	shareBtn: {
+		padding: 6,
+		borderRadius: radius.sm,
+		backgroundColor: colors.muted,
+		alignItems: 'center',
+		justifyContent: 'center'
+	},
+	codeHint: { fontSize: font.xs, color: colors.mutedForeground, marginTop: 4 },
+	memberName: { fontSize: font.sm, color: colors.foreground, marginTop: 4 },
+	leaveBtn: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 8,
+		backgroundColor: colors.card,
+		borderRadius: radius.lg,
+		borderWidth: 1,
+		borderColor: colors.border,
+		padding: spacing.md
+	},
+	leaveBtnText: { fontSize: font.base, color: colors.destructive },
+	cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+	cardTitle: { fontSize: font.base, fontWeight: '600', color: colors.foreground },
+	input: {
+		backgroundColor: colors.background,
+		borderRadius: radius.md,
+		borderWidth: 1,
+		borderColor: colors.border,
+		padding: spacing.sm,
+		color: colors.foreground,
+		fontSize: font.base,
+		marginBottom: 8
+	},
+	errorText: { fontSize: font.sm, color: colors.destructive, marginBottom: 8 },
+	actionBtn: {
+		backgroundColor: colors.primary,
+		borderRadius: radius.md,
+		padding: spacing.sm,
+		alignItems: 'center',
+		marginTop: 4
+	},
+	actionBtnDisabled: { opacity: 0.5 },
+	actionBtnText: { color: colors.primaryForeground, fontSize: font.base, fontWeight: '600' }
 });
