@@ -10,7 +10,8 @@ import {
 	ActivityIndicator,
 	Modal,
 	Pressable,
-	Platform
+	Platform,
+	KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -176,6 +177,8 @@ export default function ExploreScreen() {
 						setEvents(eventRes.value.events);
 						setTotalPages(eventRes.value.pages);
 						setLoadPageFn(() => eventRes.value!.loadPage);
+					} else if (eventRes.status === 'fulfilled' && !eventRes.value) {
+						setEvents(null);
 					} else if (
 						eventRes.status === 'rejected' &&
 						(teamRes.status === 'rejected' || (teamRes.value ?? []).length === 0)
@@ -378,7 +381,55 @@ export default function ExploreScreen() {
 					<View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
 						<View style={styles.sheetHandle} />
 						<Text style={styles.sheetTitle}>Filters</Text>
+						<Text style={styles.filterLabel}>From date</Text>
+						<View style={styles.dateRow}>
+							<TouchableOpacity
+								style={styles.dateArrow}
+								onPress={() => {
+									const d = new Date(fromDate);
+									d.setMonth(d.getMonth() - 1);
+									if (d < toDate) setFromDate(d);
+								}}
+							>
+								<ChevronLeft size={18} color={colors.foreground} />
+							</TouchableOpacity>
+							<Text style={styles.dateText}>{formatDate(fromDate)}</Text>
+							<TouchableOpacity
+								style={styles.dateArrow}
+								onPress={() => {
+									const d = new Date(fromDate);
+									d.setMonth(d.getMonth() + 1);
+									if (d < toDate) setFromDate(d);
+								}}
+							>
+								<ChevronRight size={18} color={colors.foreground} />
+							</TouchableOpacity>
+						</View>
 
+						<Text style={[styles.filterLabel, { marginTop: 12 }]}>To date</Text>
+						<View style={[styles.dateRow, { marginBottom: 16 }]}>
+							<TouchableOpacity
+								style={styles.dateArrow}
+								onPress={() => {
+									const d = new Date(toDate);
+									d.setMonth(d.getMonth() - 1);
+									if (d > fromDate) setToDate(d);
+								}}
+							>
+								<ChevronLeft size={18} color={colors.foreground} />
+							</TouchableOpacity>
+							<Text style={styles.dateText}>{formatDate(toDate)}</Text>
+							<TouchableOpacity
+								style={styles.dateArrow}
+								onPress={() => {
+									const d = new Date(toDate);
+									d.setMonth(d.getMonth() + 1);
+									if (d > fromDate) setToDate(d);
+								}}
+							>
+								<ChevronRight size={18} color={colors.foreground} />
+							</TouchableOpacity>
+						</View>
 						<Text style={styles.filterLabel}>Region</Text>
 						<View style={styles.regionDropdown}>
 							<View style={styles.regionSearch}>
@@ -571,6 +622,24 @@ const styles = StyleSheet.create({
 	regionItemActive: { backgroundColor: colors.primary + '20' },
 	regionItemText: { fontSize: font.sm, color: colors.foreground },
 	regionItemTextActive: { color: colors.primary, fontWeight: '600' },
+	dateRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		backgroundColor: colors.background,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.lg,
+		paddingHorizontal: 8,
+		paddingVertical: 6,
+		marginBottom: 4
+	},
+	dateArrow: {
+		padding: 6,
+		borderRadius: radius.md,
+		backgroundColor: colors.card
+	},
+	dateText: { fontSize: font.sm, color: colors.foreground, fontWeight: '500' },
 	pill: {
 		paddingHorizontal: 14,
 		paddingVertical: 7,

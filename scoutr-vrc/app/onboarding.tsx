@@ -115,7 +115,6 @@ export default function OnboardingScreen() {
 				>
 					<Text style={styles.heading}>Find your team</Text>
 
-					<Text style={styles.label}>Program</Text>
 					<ScrollView
 						horizontal
 						showsHorizontalScrollIndicator={false}

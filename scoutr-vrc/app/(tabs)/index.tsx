@@ -9,12 +9,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowRight, Gamepad2, Trophy } from 'lucide-react-native';
+import { ArrowRight, Gamepad2, Trophy, Award, TrendingUp } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { re } from '../../lib/robotevents';
 import type { Event, Team } from '../../lib/robotevents/robotevents/models';
 import { useStorage } from '../../lib/state/storage';
 import { CONSTANTS } from '../../lib/const';
+import { getVDAStatsByTeamNum } from '../../lib/data/vda';
+import type { VDAStats } from '../../lib/data/vda';
 
 type TeamStats = {
 	team: Team;
@@ -24,6 +26,8 @@ type TeamStats = {
 	ties: number;
 	skillsRank: number | null;
 	skillsScore: number | null;
+	vdaStats: VDAStats | null;
+	awardsCount: number;
 };
 
 const formatEventDate = (event: Event): string => {
@@ -38,7 +42,8 @@ const formatEventDate = (event: Event): string => {
 
 export default function HomeScreen() {
 	const { team: teamNumber, program: programId } = useStorage();
-	const [loading, setLoading] = useState(true);
+	const [loadingEvents, setLoadingEvents] = useState(true);
+	const [loadingStats, setLoadingStats] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
 	const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
@@ -50,11 +55,13 @@ export default function HomeScreen() {
 			if (!teamNumber) {
 				setTeamStats(null);
 				setUpcomingEvents([]);
-				setLoading(false);
+				setLoadingEvents(false);
+				setLoadingStats(false);
 				return;
 			}
 
-			setLoading(true);
+			setLoadingEvents(true);
+			setLoadingStats(true);
 			setError(null);
 
 			try {
@@ -89,70 +96,109 @@ export default function HomeScreen() {
 				if (!targetTeam || cancelled) {
 					setTeamStats(null);
 					setUpcomingEvents([]);
-					setLoading(false);
+					setLoadingEvents(false);
+					setLoadingStats(false);
 					return;
 				}
 
-				const [details, matches, skills, events] = await Promise.all([
-					re.team.teamGetTeam({ id: targetTeam.id }),
-					re.depaginate(
-						re.team.teamGetMatches({ id: targetTeam.id, season: [season.id!] }, re.custom.maxPages),
-						re.models.PaginatedMatchFromJSON
-					),
-					re.custom.cache
-						.load('skills.leaderboard', season.id!)
-						.then((leaderboard) => leaderboard.find((e) => e.team.id === targetTeam.id) ?? null),
-					re.depaginate(
-						re.team.teamGetEvents({ id: targetTeam.id, season: [season.id!], start: new Date() }),
-						re.models.PaginatedEventFromJSON
-					)
-				]);
-
-				if (cancelled) return;
-
-				const matchTotals = matches.reduce(
-					(acc, match) => {
-						const alliance = match.alliances.find((a) =>
-							a.teams.some((t) => t.team?.id === targetTeam.id)
+				const loadEvents = async () => {
+					try {
+						const events = await re.depaginate(
+							re.team.teamGetEvents({ id: targetTeam.id, season: [season.id!], start: new Date() }),
+							re.models.PaginatedEventFromJSON
 						);
-						const opposite = match.alliances.find((a) => a.color !== alliance?.color);
-						if (!alliance || !opposite) return acc;
-						if (alliance.score > opposite.score) acc.wins += 1;
-						else if (alliance.score < opposite.score) acc.losses += 1;
-						else acc.ties += 1;
-						return acc;
-					},
-					{ wins: 0, losses: 0, ties: 0 }
-				);
+						if (cancelled) return;
+						const now = new Date();
+						now.setHours(0, 0, 0, 0);
+						const sorted = events
+							.filter((e) => {
+								const d = e.start ?? e.end;
+								return d ? d >= now : false;
+							})
+							.sort(
+								(a, b) =>
+									((a.start ?? a.end)?.getTime() ?? Infinity) -
+									((b.start ?? b.end)?.getTime() ?? Infinity)
+							);
+						setUpcomingEvents(sorted);
+					} catch (e) {
+						if (!cancelled) setError((e as Error).message);
+					} finally {
+						if (!cancelled) setLoadingEvents(false);
+					}
+				};
 
-				const total = matchTotals.wins + matchTotals.losses + matchTotals.ties;
-				const winRate = total > 0 ? (matchTotals.wins / total) * 100 : 0;
+				const loadStats = async () => {
+					try {
+						const [details, matches, skills, awards] = await Promise.all([
+							re.team.teamGetTeam({ id: targetTeam.id }),
+							re.depaginate(
+								re.team.teamGetMatches(
+									{ id: targetTeam.id, season: [season.id!] },
+									re.custom.maxPages
+								),
+								re.models.PaginatedMatchFromJSON
+							),
+							re.custom.cache
+								.load('skills.leaderboard', season.id!)
+								.then(
+									(leaderboard) => leaderboard.find((e) => e.team.id === targetTeam.id) ?? null
+								),
+							re.depaginate(
+								re.team.teamGetAwards(
+									{ id: targetTeam.id, season: [season.id!] },
+									re.custom.maxPages
+								),
+								re.models.PaginatedAwardFromJSON
+							)
+						]);
+						if (cancelled) return;
 
-				const now = new Date();
-				now.setHours(0, 0, 0, 0);
-				const futureEvents = events
-					.filter((e) => {
-						const d = e.start ?? e.end;
-						return d ? d >= now : false;
-					})
-					.sort(
-						(a, b) =>
-							((a.start ?? a.end)?.getTime() ?? Infinity) -
-							((b.start ?? b.end)?.getTime() ?? Infinity)
-					);
+						const matchTotals = matches.reduce(
+							(acc, match) => {
+								const alliance = match.alliances.find((a) =>
+									a.teams.some((t) => t.team?.id === targetTeam.id)
+								);
+								const opposite = match.alliances.find((a) => a.color !== alliance?.color);
+								if (!alliance || !opposite) return acc;
+								if (alliance.score > opposite.score) acc.wins += 1;
+								else if (alliance.score < opposite.score) acc.losses += 1;
+								else acc.ties += 1;
+								return acc;
+							},
+							{ wins: 0, losses: 0, ties: 0 }
+						);
 
-				setTeamStats({
-					team: details,
-					winRate,
-					...matchTotals,
-					skillsRank: skills?.rank ?? null,
-					skillsScore: skills?.scores?.score ?? null
-				});
-				setUpcomingEvents(futureEvents);
+						const total = matchTotals.wins + matchTotals.losses + matchTotals.ties;
+						const winRate = total > 0 ? (matchTotals.wins / total) * 100 : 0;
+
+						const vdaStats = await getVDAStatsByTeamNum(season.id!, season.id!, targetTeam.number);
+						if (cancelled) return;
+
+						setTeamStats({
+							team: details,
+							winRate,
+							...matchTotals,
+							skillsRank: skills?.rank ?? null,
+							skillsScore: skills?.scores?.score ?? null,
+							vdaStats,
+							awardsCount: awards.length
+						});
+					} catch (e) {
+						if (!cancelled) setError((e as Error).message);
+					} finally {
+						if (!cancelled) setLoadingStats(false);
+					}
+				};
+
+				loadEvents();
+				loadStats();
 			} catch (e) {
-				if (!cancelled) setError((e as Error).message);
-			} finally {
-				if (!cancelled) setLoading(false);
+				if (!cancelled) {
+					setError((e as Error).message);
+					setLoadingEvents(false);
+					setLoadingStats(false);
+				}
 			}
 		};
 
@@ -169,7 +215,7 @@ export default function HomeScreen() {
 		<SafeAreaView style={styles.safe} edges={['top']}>
 			<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 				<Section label="Upcoming Competition">
-					{loading ? (
+					{loadingEvents ? (
 						<Card>
 							<ActivityIndicator color={colors.primary} />
 						</Card>
@@ -197,7 +243,7 @@ export default function HomeScreen() {
 				</Section>
 
 				<Section label="Team Snapshot">
-					{loading ? (
+					{loadingStats ? (
 						<Card>
 							<ActivityIndicator color={colors.primary} />
 						</Card>
@@ -229,6 +275,30 @@ export default function HomeScreen() {
 									<Text style={styles.statSub}>
 										Rank {teamStats.skillsRank !== null ? `#${teamStats.skillsRank}` : 'N/A'}
 									</Text>
+								</View>
+								<View style={styles.statBox}>
+									<View style={styles.statLabel}>
+										<TrendingUp size={14} color={colors.mutedForeground} />
+										<Text style={styles.statLabelText}>TrueSkill</Text>
+									</View>
+									<Text style={styles.statValue}>
+										{teamStats.vdaStats?.trueSkill != null
+											? teamStats.vdaStats.trueSkill.toFixed(1)
+											: 'N/A'}
+									</Text>
+									<Text style={styles.statSub} numberOfLines={1}>
+										{teamStats.vdaStats?.opr != null
+											? `${teamStats.vdaStats.opr.toFixed(1)} OPR / ${teamStats.vdaStats.dpr?.toFixed(1)} DPR / ${teamStats.vdaStats.ccwm?.toFixed(1)} CCWM`
+											: 'OPR / DPR / CCWM'}
+									</Text>
+								</View>
+								<View style={styles.statBox}>
+									<View style={styles.statLabel}>
+										<Award size={14} color={colors.mutedForeground} />
+										<Text style={styles.statLabelText}>Awards</Text>
+									</View>
+									<Text style={styles.statValue}>{teamStats.awardsCount}</Text>
+									<Text style={styles.statSub}>this season</Text>
 								</View>
 							</View>
 						</Card>
@@ -323,9 +393,9 @@ const styles = StyleSheet.create({
 	eventDate: { fontSize: font.md, color: colors.mutedForeground, marginTop: 2 },
 	teamNumber: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground },
 	teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2, marginBottom: 12 },
-	statsRow: { flexDirection: 'row', gap: 12 },
+	statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 	statBox: {
-		flex: 1,
+		width: '47.5%',
 		borderRadius: radius.md,
 		borderWidth: 1,
 		borderColor: colors.border,

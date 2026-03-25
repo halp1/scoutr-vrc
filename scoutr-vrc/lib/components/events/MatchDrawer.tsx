@@ -1,4 +1,14 @@
-import { View, Text, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
+import { useRef } from 'react';
+import {
+	View,
+	Text,
+	ScrollView,
+	Modal,
+	Pressable,
+	StyleSheet,
+	PanResponder,
+	TouchableOpacity
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, eventFont as font, radius, spacing } from '../../theme';
 
@@ -30,6 +40,7 @@ interface Props {
 	onClose: () => void;
 	row: ScheduleRow | null;
 	rankingRows: RankingRow[];
+	onTeamSelect?: (teamNumber: string) => void;
 }
 
 const parseScores = (score: string): [number, number] => {
@@ -41,8 +52,17 @@ const parseScores = (score: string): [number, number] => {
 
 const normalize = (v: string) => v.trim().toLowerCase();
 
-export const MatchDrawer = ({ open, onClose, row, rankingRows }: Props) => {
+export const MatchDrawer = ({ open, onClose, row, rankingRows, onTeamSelect }: Props) => {
 	const insets = useSafeAreaInsets();
+	const panResponder = useRef(
+		PanResponder.create({
+			onStartShouldSetPanResponder: () => false,
+			onMoveShouldSetPanResponder: (_, g) => g.dy > 10,
+			onPanResponderRelease: (_, g) => {
+				if (g.dy > 50) onClose();
+			}
+		})
+	).current;
 	if (!row) return null;
 
 	const [redScore, blueScore] = parseScores(row.score);
@@ -52,7 +72,11 @@ export const MatchDrawer = ({ open, onClose, row, rankingRows }: Props) => {
 	const AllianceTeam = ({ teamNumber, color }: { teamNumber: string; color: string }) => {
 		const ranking = getTeamRanking(teamNumber);
 		return (
-			<View style={styles.allianceTeamRow}>
+			<TouchableOpacity
+				style={styles.allianceTeamRow}
+				onPress={() => onTeamSelect?.(teamNumber)}
+				activeOpacity={onTeamSelect ? 0.6 : 1}
+			>
 				<Text style={styles.rankLabel}>{ranking?.rank ?? ''}</Text>
 				<View style={{ flex: 1, minWidth: 0 }}>
 					<Text style={[styles.teamNum, { color }]}>{teamNumber}</Text>
@@ -73,7 +97,7 @@ export const MatchDrawer = ({ open, onClose, row, rankingRows }: Props) => {
 						</View>
 					</View>
 				)}
-			</View>
+			</TouchableOpacity>
 		);
 	};
 
@@ -88,7 +112,9 @@ export const MatchDrawer = ({ open, onClose, row, rankingRows }: Props) => {
 			<View style={styles.modalContainer}>
 				<Pressable style={styles.backdrop} onPress={onClose} />
 				<View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-					<View style={styles.handle} />
+					<View style={styles.handleZone} {...panResponder.panHandlers}>
+						<View style={styles.handle} />
+					</View>
 					<ScrollView showsVerticalScrollIndicator={false}>
 						<Text style={styles.heading}>Game Info</Text>
 
@@ -146,13 +172,16 @@ const styles = StyleSheet.create({
 		padding: spacing.lg,
 		maxHeight: '85%'
 	},
+	handleZone: {
+		alignItems: 'center',
+		paddingVertical: 12,
+		marginBottom: 4
+	},
 	handle: {
 		width: 36,
 		height: 4,
 		borderRadius: 2,
-		backgroundColor: colors.border,
-		alignSelf: 'center',
-		marginBottom: 16
+		backgroundColor: colors.border
 	},
 	heading: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground, marginBottom: 16 },
 	matchCard: {

@@ -302,6 +302,7 @@ export default function EventScreen() {
 	const [selectedTeam, setSelectedTeam] = useState<RankingRow | null>(null);
 	const [matchDrawerOpen, setMatchDrawerOpen] = useState(false);
 	const [selectedMatch, setSelectedMatch] = useState<ScheduleRow | null>(null);
+	const [matchDrawerReturnRow, setMatchDrawerReturnRow] = useState<ScheduleRow | null>(null);
 
 	const divisionRatings = useMemo(() => {
 		const quals = divisionMatches.filter((m) => m.round === 2);
@@ -519,6 +520,26 @@ export default function EventScreen() {
 		setTeamDrawerOpen(true);
 	};
 
+	const openTeamDrawerFromMatch = (teamNumber: string) => {
+		const ranking = rankingRows.find(
+			(r) => r.team.trim().toLowerCase() === teamNumber.trim().toLowerCase()
+		);
+		if (!ranking) return;
+		setMatchDrawerReturnRow(selectedMatch);
+		setMatchDrawerOpen(false);
+		setSelectedTeam(ranking);
+		setTeamDrawerOpen(true);
+	};
+
+	const closeTeamDrawer = () => {
+		setTeamDrawerOpen(false);
+		if (matchDrawerReturnRow) {
+			setSelectedMatch(matchDrawerReturnRow);
+			setMatchDrawerReturnRow(null);
+			setMatchDrawerOpen(true);
+		}
+	};
+
 	const openMatchDrawer = (row: ScheduleRow) => {
 		setSelectedMatch(row);
 		setMatchDrawerOpen(true);
@@ -626,11 +647,7 @@ export default function EventScreen() {
 					style={styles.tabPage}
 					contentContainerStyle={styles.tabContent}
 					refreshControl={
-						<RefreshControl
-							refreshing={refreshing}
-							onRefresh={onRefresh}
-							tintColor={colors.primary}
-						/>
+						<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="transparent" />
 					}
 				>
 					<ScheduleTab rows={scheduleRows} onMatchSelect={openMatchDrawer} />
@@ -639,11 +656,7 @@ export default function EventScreen() {
 					style={styles.tabPage}
 					contentContainerStyle={styles.tabContent}
 					refreshControl={
-						<RefreshControl
-							refreshing={refreshing}
-							onRefresh={onRefresh}
-							tintColor={colors.primary}
-						/>
+						<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="transparent" />
 					}
 				>
 					<RankingsTab rows={rankingRows} onTeamSelect={openTeamDrawer} />
@@ -652,11 +665,7 @@ export default function EventScreen() {
 					style={styles.tabPage}
 					contentContainerStyle={styles.tabContent}
 					refreshControl={
-						<RefreshControl
-							refreshing={refreshing}
-							onRefresh={onRefresh}
-							tintColor={colors.primary}
-						/>
+						<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="transparent" />
 					}
 				>
 					<SkillsTab rows={skillsRows} />
@@ -665,11 +674,7 @@ export default function EventScreen() {
 					style={styles.tabPage}
 					contentContainerStyle={styles.tabContent}
 					refreshControl={
-						<RefreshControl
-							refreshing={refreshing}
-							onRefresh={onRefresh}
-							tintColor={colors.primary}
-						/>
+						<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="transparent" />
 					}
 				>
 					<InfoTab
@@ -687,7 +692,7 @@ export default function EventScreen() {
 
 			<TeamDrawer
 				open={teamDrawerOpen}
-				onClose={() => setTeamDrawerOpen(false)}
+				onClose={closeTeamDrawer}
 				team={selectedTeam}
 				skills={selectedTeamSkills}
 				matches={selectedTeamMatches}
@@ -700,6 +705,7 @@ export default function EventScreen() {
 				onClose={() => setMatchDrawerOpen(false)}
 				row={selectedMatch}
 				rankingRows={rankingRows}
+				onTeamSelect={openTeamDrawerFromMatch}
 			/>
 		</SafeAreaView>
 	);

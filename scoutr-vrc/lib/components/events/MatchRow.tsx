@@ -99,19 +99,19 @@ const styles = StyleSheet.create({
 		paddingVertical: 6
 	},
 	matchLabel: { flex: 2, fontSize: font['2xl'], fontWeight: '500' },
-	scoreCol: { flex: 3, alignItems: 'flex-end', paddingRight: 4 },
-	scoreGrid: { gap: 2 },
+	scoreCol: { flex: 3, alignItems: 'flex-end', paddingRight: 12 },
+	scoreGrid: { gap: 2, alignItems: 'center' },
 	timeTxt: { fontSize: font.base, color: colors.mutedForeground },
 	scoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
 	redScore: { fontSize: font.base, color: '#fca5a5', fontVariant: ['tabular-nums'] },
-	dash: { fontSize: font.base, color: colors.mutedForeground },
+	dash: { fontSize: font.base, color: colors.mutedForeground, paddingHorizontal: 16 },
 	blueScore: { fontSize: font.base, color: '#93c5fd', fontVariant: ['tabular-nums'] },
 	teamsCol: {
 		flex: 3,
 		flexDirection: 'row',
 		borderLeftWidth: 1,
 		borderLeftColor: colors.border,
-		paddingLeft: 8,
+		paddingLeft: 16,
 		gap: 12
 	},
 	allianceCol: { flex: 1, gap: 2 },

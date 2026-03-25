@@ -19,6 +19,7 @@ export interface AppStorage {
 		teams: number[];
 		events: number[];
 	};
+	notes: Record<string, string>;
 }
 
 interface AppState extends AppStorage {
@@ -32,6 +33,8 @@ interface AppState extends AppStorage {
 	removeFavoriteTeam: (id: number) => void;
 	addFavoriteEvent: (id: number) => void;
 	removeFavoriteEvent: (id: number) => void;
+	setNote: (teamNumber: string, note: string) => void;
+	setAllNotes: (notes: Record<string, string>) => void;
 }
 
 export const useStorage = create<AppState>()(
@@ -43,6 +46,7 @@ export const useStorage = create<AppState>()(
 			onboarding: { intro: false, team: false, account: false },
 			current: { event: null },
 			favorites: { teams: [], events: [] },
+			notes: {},
 			_hydrated: false,
 
 			setTeam: (team) => set({ team }),
@@ -66,7 +70,10 @@ export const useStorage = create<AppState>()(
 			removeFavoriteEvent: (id) =>
 				set((s) => ({
 					favorites: { ...s.favorites, events: s.favorites.events.filter((e) => e !== id) }
-				}))
+				})),
+			setNote: (teamNumber, note) =>
+				set((s) => ({ notes: { ...s.notes, [teamNumber]: note } })),
+			setAllNotes: (notes) => set({ notes })
 		}),
 		{
 			name: 'scoutr-storage',

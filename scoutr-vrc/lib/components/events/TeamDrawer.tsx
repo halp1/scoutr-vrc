@@ -1,4 +1,5 @@
-import { View, Text, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
+import { useRef } from 'react';
+import { View, Text, ScrollView, Modal, Pressable, StyleSheet, PanResponder } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gamepad2, Terminal, Trophy } from 'lucide-react-native';
 import { colors, eventFont as font, radius, spacing } from '../../theme';
@@ -57,6 +58,15 @@ export const TeamDrawer = ({
 	ccwm = null
 }: Props) => {
 	const insets = useSafeAreaInsets();
+	const panResponder = useRef(
+		PanResponder.create({
+			onStartShouldSetPanResponder: () => false,
+			onMoveShouldSetPanResponder: (_, g) => g.dy > 10,
+			onPanResponderRelease: (_, g) => {
+				if (g.dy > 50) onClose();
+			}
+		})
+	).current;
 	if (!team) return null;
 
 	const total = team.wins + team.losses + team.ties;
@@ -78,7 +88,9 @@ export const TeamDrawer = ({
 			<View style={styles.modalContainer}>
 				<Pressable style={styles.backdrop} onPress={onClose} />
 				<View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-					<View style={styles.handle} />
+					<View style={styles.handleZone} {...panResponder.panHandlers}>
+						<View style={styles.handle} />
+					</View>
 					<ScrollView showsVerticalScrollIndicator={false}>
 						<Text style={styles.teamNum}>{team.team}</Text>
 						<Text style={styles.teamName}>{team.name || 'No team name available'}</Text>
@@ -120,10 +132,16 @@ export const TeamDrawer = ({
 
 							<View style={styles.subRow}>
 								<View style={styles.awpGroup}>
-									<Text style={styles.statVal}>{awps.toFixed(0)}</Text>
-									<Text style={styles.statLabel}>AWP</Text>
-									<Text style={[styles.statVal, { marginTop: 8 }]}>{awpRate.toFixed(1)}%</Text>
-									<Text style={styles.statLabel}>AWP %</Text>
+									<View style={styles.awpRow}>
+										<View style={styles.statCol}>
+											<Text style={styles.statVal}>{awps.toFixed(0)}</Text>
+											<Text style={styles.statLabel}>AWP</Text>
+										</View>
+										<View style={styles.statCol}>
+											<Text style={styles.statVal}>{awpRate.toFixed(1)}%</Text>
+											<Text style={styles.statLabel}>AWP %</Text>
+										</View>
+									</View>
 								</View>
 								<View style={styles.ratingGroup}>
 									{(
@@ -197,13 +215,16 @@ const styles = StyleSheet.create({
 		padding: spacing.lg,
 		maxHeight: '85%'
 	},
+	handleZone: {
+		alignItems: 'center',
+		paddingVertical: 12,
+		marginBottom: 4
+	},
 	handle: {
 		width: 36,
 		height: 4,
 		borderRadius: 2,
-		backgroundColor: colors.border,
-		alignSelf: 'center',
-		marginBottom: 16
+		backgroundColor: colors.border
 	},
 	teamNum: { fontSize: font['3xl'], fontWeight: '600', color: colors.foreground, lineHeight: 36 },
 	teamName: { fontSize: font.base, color: colors.mutedForeground, marginTop: 4, marginBottom: 16 },
@@ -241,7 +262,8 @@ const styles = StyleSheet.create({
 	barSegment: { height: '100%' },
 	wlt: { fontSize: font.sm, color: colors.foreground },
 	subRow: { flexDirection: 'row', alignItems: 'flex-start' },
-	awpGroup: { width: 80 },
+	awpGroup: { width: 120 },
+	awpRow: { flexDirection: 'row' as const, gap: 16 },
 	ratingGroup: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: 16 },
 	ratingItem: { alignItems: 'center' },
 	skillsScore: { fontSize: font['3xl'], fontWeight: '600', color: colors.foreground },
