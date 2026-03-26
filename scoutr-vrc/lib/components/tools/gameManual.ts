@@ -638,10 +638,7 @@ export const parseManual = async (
 	for (let si = 0; si < sectionsMeta.length; si++) {
 		const s = sectionsMeta[si];
 		await yieldThread();
-		onProgress?.(
-			0.65 + (si / sectionsMeta.length) * 0.34,
-			`Parsing ${s.title}...`
-		);
+		onProgress?.(0.65 + (si / sectionsMeta.length) * 0.34, `Parsing ${s.title}...`);
 		if (seenSectionIds.has(s.id)) continue;
 		seenSectionIds.add(s.id);
 		const seenSubIds = new Set<string>();
