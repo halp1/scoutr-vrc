@@ -70,14 +70,16 @@ export const TeamDrawer = ({
 	ccwm = null
 }: Props) => {
 	const insets = useSafeAreaInsets();
-	const { notes, setNote, auth, scoutingTeam } = useStorage();
+	const { notes, setNote, auth, scoutingTeams } = useStorage();
 	const [noteText, setNoteText] = useState(notes[team?.team ?? ''] ?? '');
-	const [teammateNotes, setTeammateNotes] = useState<{ displayName: string; note: string }[]>([]);
+	const [teammateNotes, setTeammateNotes] = useState<
+		{ displayName: string; note: string; sharedTeams: string[] }[]
+	>([]);
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		setNoteText(notes[team?.team ?? ''] ?? '');
-		if (team?.team && auth && scoutingTeam) {
+		if (team?.team && auth && scoutingTeams.length > 0) {
 			fetchTeammateNotes(team.team).then(setTeammateNotes);
 		} else {
 			setTeammateNotes([]);
@@ -230,7 +232,7 @@ export const TeamDrawer = ({
 								placeholderTextColor={colors.mutedForeground}
 							/>
 						</View>
-						{scoutingTeam && (
+						{scoutingTeams.length > 0 && (
 							<View style={styles.card}>
 								<Text style={styles.notesLabel}>Team Notes</Text>
 								{teammateNotes.length === 0 ? (
@@ -240,6 +242,9 @@ export const TeamDrawer = ({
 										{teammateNotes.map((n, i) => (
 											<View key={i} style={styles.teammateNote}>
 												<Text style={styles.teammateNoteName}>{n.displayName}</Text>
+												{n.sharedTeams.length > 0 && (
+													<Text style={styles.teammateNoteTeams}>{n.sharedTeams.join(' · ')}</Text>
+												)}
 												<Text style={styles.teammateNoteText}>{n.note}</Text>
 											</View>
 										))}
@@ -365,6 +370,11 @@ const styles = StyleSheet.create({
 	teammateNoteName: {
 		fontSize: font.xs,
 		fontWeight: '600',
+		color: colors.mutedForeground,
+		marginBottom: 1
+	},
+	teammateNoteTeams: {
+		fontSize: font.xs,
 		color: colors.mutedForeground,
 		marginBottom: 2
 	},

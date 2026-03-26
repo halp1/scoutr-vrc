@@ -1,55 +1,51 @@
 import 'react-native-url-polyfill/auto';
+import 'react-native-get-random-values';
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as aesjs from 'aes-js';
 import { CONSTANTS } from '../const';
 
-const CHUNK_SIZE = 1800;
-
-const ExpoSecureStoreAdapter = {
-	getItem: async (key: string) => {
-		const chunkCount = await SecureStore.getItemAsync(`${key}.chunks`);
-		if (chunkCount) {
-			const n = parseInt(chunkCount, 10);
-			const parts = await Promise.all(
-				Array.from({ length: n }, (_, i) => SecureStore.getItemAsync(`${key}.${i}`))
-			);
-			if (parts.some((p) => p === null)) return null;
-			return parts.join('');
-		}
-		return SecureStore.getItemAsync(key);
-	},
-	setItem: async (key: string, value: string) => {
-		if (value.length > CHUNK_SIZE) {
-			const n = Math.ceil(value.length / CHUNK_SIZE);
-			await Promise.all(
-				Array.from({ length: n }, (_, i) =>
-					SecureStore.setItemAsync(`${key}.${i}`, value.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE))
-				)
-			);
-			await SecureStore.setItemAsync(`${key}.chunks`, String(n));
-			await SecureStore.deleteItemAsync(key).catch(() => {});
-		} else {
-			await SecureStore.setItemAsync(key, value);
-			await SecureStore.deleteItemAsync(`${key}.chunks`).catch(() => {});
-		}
-	},
-	removeItem: async (key: string) => {
-		const chunkCount = await SecureStore.getItemAsync(`${key}.chunks`);
-		if (chunkCount) {
-			const n = parseInt(chunkCount, 10);
-			await Promise.all([
-				...Array.from({ length: n }, (_, i) => SecureStore.deleteItemAsync(`${key}.${i}`)),
-				SecureStore.deleteItemAsync(`${key}.chunks`)
-			]);
-		} else {
-			await SecureStore.deleteItemAsync(key);
-		}
+class LargeSecureStore {
+	private async _encrypt(key: string, value: string) {
+		const encryptionKey = crypto.getRandomValues(new Uint8Array(256 / 8));
+		const cipher = new aesjs.ModeOfOperation.ctr(encryptionKey, new aesjs.Counter(1));
+		const encryptedBytes = cipher.encrypt(aesjs.utils.utf8.toBytes(value));
+		await SecureStore.setItemAsync(key, aesjs.utils.hex.fromBytes(encryptionKey));
+		return aesjs.utils.hex.fromBytes(encryptedBytes);
 	}
-};
+
+	private async _decrypt(key: string, value: string) {
+		const encryptionKeyHex = await SecureStore.getItemAsync(key);
+		if (!encryptionKeyHex) return encryptionKeyHex;
+		const cipher = new aesjs.ModeOfOperation.ctr(
+			aesjs.utils.hex.toBytes(encryptionKeyHex),
+			new aesjs.Counter(1)
+		);
+		const decryptedBytes = cipher.decrypt(aesjs.utils.hex.toBytes(value));
+		return aesjs.utils.utf8.fromBytes(decryptedBytes);
+	}
+
+	async getItem(key: string) {
+		const encrypted = await AsyncStorage.getItem(key);
+		if (!encrypted) return encrypted;
+		return this._decrypt(key, encrypted);
+	}
+
+	async removeItem(key: string) {
+		await AsyncStorage.removeItem(key);
+		await SecureStore.deleteItemAsync(key);
+	}
+
+	async setItem(key: string, value: string) {
+		const encrypted = await this._encrypt(key, value);
+		await AsyncStorage.setItem(key, encrypted);
+	}
+}
 
 export const supabase = createClient(CONSTANTS.SUPABASE_URL, CONSTANTS.SUPABASE_PUBLISHABLE_KEY, {
 	auth: {
-		storage: ExpoSecureStoreAdapter,
+		storage: new LargeSecureStore(),
 		autoRefreshToken: true,
 		persistSession: true,
 		detectSessionInUrl: false

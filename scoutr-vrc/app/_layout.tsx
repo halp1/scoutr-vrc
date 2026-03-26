@@ -2,7 +2,7 @@ import 'react-native-url-polyfill/auto';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
-import { Stack, router } from 'expo-router';
+import { Stack, Redirect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -10,13 +10,13 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useStorage } from '../lib/state/storage';
 import { supabase } from '../lib/supabase';
 import { fetchAllNotes } from '../lib/supabase/notes';
-import { fetchMyScoutingTeam } from '../lib/supabase/teams';
+import { fetchMyScoutingTeams } from '../lib/supabase/teams';
 import { colors } from '../lib/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
-	const { _hydrated, auth, onboarding, setAuth, setOnboarding, setAllNotes, setScoutingTeam } =
+	const { _hydrated, auth, onboarding, setAuth, setOnboarding, setAllNotes, setScoutingTeams } =
 		useStorage();
 
 	useEffect(() => {
@@ -25,7 +25,7 @@ export default function RootLayout() {
 				setAuth(session);
 				setOnboarding('account', true);
 				fetchAllNotes().then(setAllNotes);
-				fetchMyScoutingTeam().then(setScoutingTeam);
+				fetchMyScoutingTeams().then(setScoutingTeams);
 			}
 		});
 
@@ -34,7 +34,7 @@ export default function RootLayout() {
 			if (session) {
 				setOnboarding('account', true);
 				fetchAllNotes().then(setAllNotes);
-				fetchMyScoutingTeam().then(setScoutingTeam);
+				fetchMyScoutingTeams().then(setScoutingTeams);
 			}
 		});
 
@@ -63,32 +63,16 @@ export default function RootLayout() {
 		return () => sub.remove();
 	}, []);
 
-	useEffect(() => {
-		if (!_hydrated) return;
-
-		const onboardingComplete = Object.values(onboarding).every(Boolean);
-		if (onboardingComplete) {
-			router.replace('/(tabs)');
-		} else {
-			router.replace('/onboarding');
-		}
-	}, [_hydrated]);
+	const onboardingComplete = _hydrated && Object.values(onboarding).every(Boolean);
 
 	if (!_hydrated) {
 		return (
 			<GestureHandlerRootView style={{ flex: 1 }}>
 				<SafeAreaProvider>
 					<StatusBar style="light" />
-					<Stack
-						screenOptions={{
-							headerShown: false,
-							contentStyle: { backgroundColor: colors.background }
-						}}
-					>
-						<Stack.Screen name="(tabs)" />
-						<Stack.Screen name="onboarding" />
-						<Stack.Screen name="auth-callback" />
-					</Stack>
+					<View style={styles.loading}>
+						<ActivityIndicator size="large" color={colors.primary} />
+					</View>
 				</SafeAreaProvider>
 			</GestureHandlerRootView>
 		);
@@ -104,10 +88,11 @@ export default function RootLayout() {
 						contentStyle: { backgroundColor: colors.background }
 					}}
 				>
-					<Stack.Screen name="(tabs)" />
-					<Stack.Screen name="onboarding" />
+					<Stack.Screen name="(tabs)" redirect={!onboardingComplete} />
+					<Stack.Screen name="onboarding" redirect={onboardingComplete} />
 					<Stack.Screen name="auth-callback" />
 				</Stack>
+				{onboardingComplete ? <Redirect href="/(tabs)" /> : <Redirect href="/onboarding" />}
 			</SafeAreaProvider>
 		</GestureHandlerRootView>
 	);

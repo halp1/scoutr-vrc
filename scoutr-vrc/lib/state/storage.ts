@@ -20,7 +20,7 @@ export interface AppStorage {
 		events: number[];
 	};
 	notes: Record<string, string>;
-	scoutingTeam: { id: string; name: string } | null;
+	scoutingTeams: { id: string; name: string }[];
 }
 
 interface AppState extends AppStorage {
@@ -36,7 +36,9 @@ interface AppState extends AppStorage {
 	removeFavoriteEvent: (id: number) => void;
 	setNote: (teamNumber: string, note: string) => void;
 	setAllNotes: (notes: Record<string, string>) => void;
-	setScoutingTeam: (team: { id: string; name: string } | null) => void;
+	setScoutingTeams: (teams: { id: string; name: string }[]) => void;
+	addScoutingTeam: (team: { id: string; name: string }) => void;
+	removeScoutingTeam: (teamId: string) => void;
 }
 
 export const useStorage = create<AppState>()(
@@ -49,7 +51,7 @@ export const useStorage = create<AppState>()(
 			current: { event: null },
 			favorites: { teams: [], events: [] },
 			notes: {},
-			scoutingTeam: null,
+			scoutingTeams: [],
 			_hydrated: false,
 
 			setTeam: (team) => set({ team }),
@@ -76,7 +78,15 @@ export const useStorage = create<AppState>()(
 				})),
 			setNote: (teamNumber, note) => set((s) => ({ notes: { ...s.notes, [teamNumber]: note } })),
 			setAllNotes: (notes) => set({ notes }),
-			setScoutingTeam: (scoutingTeam) => set({ scoutingTeam })
+			setScoutingTeams: (scoutingTeams) => set({ scoutingTeams }),
+			addScoutingTeam: (team) =>
+				set((s) => ({
+					scoutingTeams: s.scoutingTeams.some((t) => t.id === team.id)
+						? s.scoutingTeams
+						: [...s.scoutingTeams, team]
+				})),
+			removeScoutingTeam: (teamId) =>
+				set((s) => ({ scoutingTeams: s.scoutingTeams.filter((t) => t.id !== teamId) }))
 		}),
 		{
 			name: 'scoutr-storage',

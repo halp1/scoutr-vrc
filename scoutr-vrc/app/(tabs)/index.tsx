@@ -14,21 +14,11 @@ import { colors, font, spacing, radius } from '../../lib/theme';
 import { re } from '../../lib/robotevents';
 import type { Event, Team } from '../../lib/robotevents/robotevents/models';
 import { useStorage } from '../../lib/state/storage';
-import { CONSTANTS } from '../../lib/const';
 import { getVDAStatsByTeamNum } from '../../lib/data/vda';
 import type { VDAStats } from '../../lib/data/vda';
 
-type TeamStats = {
-	team: Team;
-	winRate: number;
-	wins: number;
-	losses: number;
-	ties: number;
-	skillsRank: number | null;
-	skillsScore: number | null;
-	vdaStats: VDAStats | null;
-	awardsCount: number;
-};
+type MatchStats = { winRate: number; wins: number; losses: number; ties: number };
+type SkillsStats = { rank: number | null; score: number | null };
 
 const formatEventDate = (event: Event): string => {
 	if (!event.start && !event.end) return 'Date TBD';
@@ -42,27 +32,48 @@ const formatEventDate = (event: Event): string => {
 
 export default function HomeScreen() {
 	const { team: teamNumber, program: programId } = useStorage();
+
+	const [loadingTeam, setLoadingTeam] = useState(true);
 	const [loadingEvents, setLoadingEvents] = useState(true);
-	const [loadingStats, setLoadingStats] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-	const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
+	const [loadingMatches, setLoadingMatches] = useState(false);
+	const [loadingSkills, setLoadingSkills] = useState(false);
+	const [loadingVda, setLoadingVda] = useState(false);
+	const [loadingAwards, setLoadingAwards] = useState(false);
+
+	const [team, setTeam] = useState<Team | null>(null);
+	const [matchStats, setMatchStats] = useState<MatchStats | null>(null);
+	const [skillsStats, setSkillsStats] = useState<SkillsStats | null>(null);
+	const [vdaStats, setVdaStats] = useState<VDAStats | null>(null);
+	const [awardsCount, setAwardsCount] = useState<number | null>(null);
 	const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+
+	const [error, setError] = useState<string | null>(null);
+	const [vdaError, setVdaError] = useState<string | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
 
 		const load = async () => {
 			if (!teamNumber) {
-				setTeamStats(null);
+				setTeam(null);
 				setUpcomingEvents([]);
+				setMatchStats(null);
+				setSkillsStats(null);
+				setVdaStats(null);
+				setAwardsCount(null);
+				setLoadingTeam(false);
 				setLoadingEvents(false);
-				setLoadingStats(false);
 				return;
 			}
 
+			setLoadingTeam(true);
 			setLoadingEvents(true);
-			setLoadingStats(true);
+			setMatchStats(null);
+			setSkillsStats(null);
+			setVdaStats(null);
+			setAwardsCount(null);
 			setError(null);
+			setVdaError(null);
 
 			try {
 				const programs = await re.depaginate(
@@ -94,17 +105,27 @@ export default function HomeScreen() {
 					null;
 
 				if (!targetTeam || cancelled) {
-					setTeamStats(null);
-					setUpcomingEvents([]);
+					setTeam(null);
+					setLoadingTeam(false);
 					setLoadingEvents(false);
-					setLoadingStats(false);
 					return;
 				}
 
-				const loadEvents = async () => {
+				setTeam(targetTeam);
+				setLoadingTeam(false);
+				setLoadingMatches(true);
+				setLoadingSkills(true);
+				setLoadingVda(true);
+				setLoadingAwards(true);
+
+				(async () => {
 					try {
 						const events = await re.depaginate(
-							re.team.teamGetEvents({ id: targetTeam.id, season: [season.id!], start: new Date() }),
+							re.team.teamGetEvents({
+								id: targetTeam.id,
+								season: [season.id!],
+								start: new Date()
+							}),
 							re.models.PaginatedEventFromJSON
 						);
 						if (cancelled) return;
@@ -120,41 +141,25 @@ export default function HomeScreen() {
 									((a.start ?? a.end)?.getTime() ?? Infinity) -
 									((b.start ?? b.end)?.getTime() ?? Infinity)
 							);
-						setUpcomingEvents(sorted);
+						if (!cancelled) setUpcomingEvents(sorted);
 					} catch (e) {
 						if (!cancelled) setError((e as Error).message);
 					} finally {
 						if (!cancelled) setLoadingEvents(false);
 					}
-				};
+				})();
 
-				const loadStats = async () => {
+				(async () => {
 					try {
-						const [details, matches, skills, awards] = await Promise.all([
-							re.team.teamGetTeam({ id: targetTeam.id }),
-							re.depaginate(
-								re.team.teamGetMatches(
-									{ id: targetTeam.id, season: [season.id!] },
-									re.custom.maxPages
-								),
-								re.models.PaginatedMatchFromJSON
+						const matches = await re.depaginate(
+							re.team.teamGetMatches(
+								{ id: targetTeam.id, season: [season.id!] },
+								re.custom.maxPages
 							),
-							re.custom.cache
-								.load('skills.leaderboard', season.id!)
-								.then(
-									(leaderboard) => leaderboard.find((e) => e.team.id === targetTeam.id) ?? null
-								),
-							re.depaginate(
-								re.team.teamGetAwards(
-									{ id: targetTeam.id, season: [season.id!] },
-									re.custom.maxPages
-								),
-								re.models.PaginatedAwardFromJSON
-							)
-						]);
+							re.models.PaginatedMatchFromJSON
+						);
 						if (cancelled) return;
-
-						const matchTotals = matches.reduce(
+						const totals = matches.reduce(
 							(acc, match) => {
 								const alliance = match.alliances.find((a) =>
 									a.teams.some((t) => t.team?.id === targetTeam.id)
@@ -168,36 +173,63 @@ export default function HomeScreen() {
 							},
 							{ wins: 0, losses: 0, ties: 0 }
 						);
-
-						const total = matchTotals.wins + matchTotals.losses + matchTotals.ties;
-						const winRate = total > 0 ? (matchTotals.wins / total) * 100 : 0;
-
-						const vdaStats = await getVDAStatsByTeamNum(season.id!, season.id!, targetTeam.number);
-						if (cancelled) return;
-
-						setTeamStats({
-							team: details,
-							winRate,
-							...matchTotals,
-							skillsRank: skills?.rank ?? null,
-							skillsScore: skills?.scores?.score ?? null,
-							vdaStats,
-							awardsCount: awards.length
-						});
+						const total = totals.wins + totals.losses + totals.ties;
+						if (!cancelled)
+							setMatchStats({ ...totals, winRate: total > 0 ? (totals.wins / total) * 100 : 0 });
 					} catch (e) {
 						if (!cancelled) setError((e as Error).message);
 					} finally {
-						if (!cancelled) setLoadingStats(false);
+						if (!cancelled) setLoadingMatches(false);
 					}
-				};
+				})();
 
-				loadEvents();
-				loadStats();
+				(async () => {
+					try {
+						const leaderboard = await re.custom.cache.load('skills.leaderboard', season.id!);
+						if (cancelled) return;
+						const entry = leaderboard.find((e) => e.team.id === targetTeam.id) ?? null;
+						if (!cancelled)
+							setSkillsStats({ rank: entry?.rank ?? null, score: entry?.scores?.score ?? null });
+					} catch (e) {
+						if (!cancelled) setError((e as Error).message);
+					} finally {
+						if (!cancelled) setLoadingSkills(false);
+					}
+				})();
+
+				(async () => {
+					try {
+						const vda = await getVDAStatsByTeamNum(season.id!, season.id!, targetTeam.number);
+						if (!cancelled) setVdaStats(vda);
+					} catch {
+						if (!cancelled)
+							setVdaError('VRC Data Analysis returned an unexpected response. Stats unavailable.');
+					} finally {
+						if (!cancelled) setLoadingVda(false);
+					}
+				})();
+
+				(async () => {
+					try {
+						const awards = await re.depaginate(
+							re.team.teamGetAwards(
+								{ id: targetTeam.id, season: [season.id!] },
+								re.custom.maxPages
+							),
+							re.models.PaginatedAwardFromJSON
+						);
+						if (!cancelled) setAwardsCount(awards.length);
+					} catch (e) {
+						if (!cancelled) setError((e as Error).message);
+					} finally {
+						if (!cancelled) setLoadingAwards(false);
+					}
+				})();
 			} catch (e) {
 				if (!cancelled) {
 					setError((e as Error).message);
+					setLoadingTeam(false);
 					setLoadingEvents(false);
-					setLoadingStats(false);
 				}
 			}
 		};
@@ -243,15 +275,15 @@ export default function HomeScreen() {
 				</Section>
 
 				<Section label="Team Snapshot">
-					{loadingStats ? (
+					{loadingTeam ? (
 						<Card>
 							<ActivityIndicator color={colors.primary} />
 						</Card>
-					) : teamStats ? (
+					) : team ? (
 						<Card>
-							<Text style={styles.teamNumber}>{teamStats.team.number}</Text>
+							<Text style={styles.teamNumber}>{team.number}</Text>
 							<Text style={styles.teamName}>
-								{teamStats.team.teamName ?? teamStats.team.organization ?? 'Team profile'}
+								{team.teamName ?? team.organization ?? 'Team profile'}
 							</Text>
 							<View style={styles.statsRow}>
 								<View style={styles.statBox}>
@@ -259,46 +291,86 @@ export default function HomeScreen() {
 										<Trophy size={14} color={colors.mutedForeground} />
 										<Text style={styles.statLabelText}>Win Rate</Text>
 									</View>
-									<Text style={styles.statValue}>{teamStats.winRate.toFixed(1)}%</Text>
-									<Text style={styles.statSub}>
-										{teamStats.wins}-{teamStats.losses}-{teamStats.ties}
-									</Text>
+									{loadingMatches ? (
+										<ActivityIndicator
+											size="small"
+											color={colors.primary}
+											style={styles.statLoader}
+										/>
+									) : (
+										<>
+											<Text style={styles.statValue}>
+												{matchStats ? `${matchStats.winRate.toFixed(1)}%` : 'N/A'}
+											</Text>
+											<Text style={styles.statSub}>
+												{matchStats
+													? `${matchStats.wins}-${matchStats.losses}-${matchStats.ties}`
+													: '—'}
+											</Text>
+										</>
+									)}
 								</View>
 								<View style={styles.statBox}>
 									<View style={styles.statLabel}>
 										<Gamepad2 size={14} color={colors.mutedForeground} />
 										<Text style={styles.statLabelText}>Skills</Text>
 									</View>
-									<Text style={styles.statValue}>
-										{teamStats.skillsScore !== null ? teamStats.skillsScore : 'N/A'}
-									</Text>
-									<Text style={styles.statSub}>
-										Rank {teamStats.skillsRank !== null ? `#${teamStats.skillsRank}` : 'N/A'}
-									</Text>
+									{loadingSkills ? (
+										<ActivityIndicator
+											size="small"
+											color={colors.primary}
+											style={styles.statLoader}
+										/>
+									) : (
+										<>
+											<Text style={styles.statValue}>{skillsStats?.score ?? 'N/A'}</Text>
+											<Text style={styles.statSub}>
+												Rank {skillsStats?.rank != null ? `#${skillsStats.rank}` : 'N/A'}
+											</Text>
+										</>
+									)}
 								</View>
 								<View style={styles.statBox}>
 									<View style={styles.statLabel}>
 										<TrendingUp size={14} color={colors.mutedForeground} />
 										<Text style={styles.statLabelText}>TrueSkill</Text>
 									</View>
-									<Text style={styles.statValue}>
-										{teamStats.vdaStats?.trueSkill != null
-											? teamStats.vdaStats.trueSkill.toFixed(1)
-											: 'N/A'}
-									</Text>
-									<Text style={styles.statSub} numberOfLines={1}>
-										{teamStats.vdaStats?.opr != null
-											? `${teamStats.vdaStats.opr.toFixed(1)} OPR / ${teamStats.vdaStats.dpr?.toFixed(1)} DPR / ${teamStats.vdaStats.ccwm?.toFixed(1)} CCWM`
-											: 'OPR / DPR / CCWM'}
-									</Text>
+									{loadingVda ? (
+										<ActivityIndicator
+											size="small"
+											color={colors.primary}
+											style={styles.statLoader}
+										/>
+									) : (
+										<>
+											<Text style={styles.statValue}>
+												{vdaStats?.trueSkill != null ? vdaStats.trueSkill.toFixed(1) : 'N/A'}
+											</Text>
+											<Text style={styles.statSub} numberOfLines={1}>
+												{vdaStats?.opr != null
+													? `${vdaStats.opr.toFixed(1)} OPR / ${vdaStats.dpr?.toFixed(1)} DPR / ${vdaStats.ccwm?.toFixed(1)} CCWM`
+													: 'OPR / DPR / CCWM'}
+											</Text>
+										</>
+									)}
 								</View>
 								<View style={styles.statBox}>
 									<View style={styles.statLabel}>
 										<Award size={14} color={colors.mutedForeground} />
 										<Text style={styles.statLabelText}>Awards</Text>
 									</View>
-									<Text style={styles.statValue}>{teamStats.awardsCount}</Text>
-									<Text style={styles.statSub}>this season</Text>
+									{loadingAwards ? (
+										<ActivityIndicator
+											size="small"
+											color={colors.primary}
+											style={styles.statLoader}
+										/>
+									) : (
+										<>
+											<Text style={styles.statValue}>{awardsCount ?? 'N/A'}</Text>
+											<Text style={styles.statSub}>this season</Text>
+										</>
+									)}
 								</View>
 							</View>
 						</Card>
@@ -333,9 +405,10 @@ export default function HomeScreen() {
 					</Section>
 				)}
 
-				{error && (
+				{(error || vdaError) && (
 					<View style={styles.errorBox}>
-						<Text style={styles.errorText}>{error}</Text>
+						{error && <Text style={styles.errorText}>{error}</Text>}
+						{vdaError && <Text style={styles.errorText}>{vdaError}</Text>}
 					</View>
 				)}
 			</ScrollView>
@@ -405,6 +478,7 @@ const styles = StyleSheet.create({
 	statLabelText: { fontSize: font.sm, color: colors.mutedForeground },
 	statValue: { fontSize: font.xl, fontWeight: '600', color: colors.foreground },
 	statSub: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
+	statLoader: { marginTop: 4, alignSelf: 'flex-start' },
 	empty: { color: colors.mutedForeground },
 	errorBox: {
 		backgroundColor: colors.destructive + '20',

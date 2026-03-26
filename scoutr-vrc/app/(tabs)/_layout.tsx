@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { House, Compass, Star, User2 } from 'lucide-react-native';
+import { House, Compass, Star, User2, Wrench } from 'lucide-react-native';
 import { colors } from '../../lib/theme';
 
 export default function TabLayout() {
@@ -30,6 +30,14 @@ export default function TabLayout() {
 				}}
 			/>
 			<Tabs.Screen
+				name="favorites"
+				options={{
+					tabBarIcon: ({ color, size }) => (
+						<Star size={size} color={color} strokeWidth={color === colors.primary ? 2 : 1.5} />
+					)
+				}}
+			/>
+			<Tabs.Screen
 				name="explore"
 				options={{
 					tabBarIcon: ({ color, size }) => (
@@ -38,10 +46,10 @@ export default function TabLayout() {
 				}}
 			/>
 			<Tabs.Screen
-				name="favorites"
+				name="tools"
 				options={{
 					tabBarIcon: ({ color, size }) => (
-						<Star size={size} color={color} strokeWidth={color === colors.primary ? 2 : 1.5} />
+						<Wrench size={size} color={color} strokeWidth={color === colors.primary ? 2 : 1.5} />
 					)
 				}}
 			/>
