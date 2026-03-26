@@ -11,23 +11,21 @@ import {
 	NativeSyntheticEvent
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BookOpen, Calculator, Timer, Gamepad2 } from 'lucide-react-native';
+import { BookOpen, Calculator, Gamepad2 } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { GameManualTab } from '../../lib/components/tools/GameManualTab';
 import { ScoringTab } from '../../lib/components/tools/ScoringTab';
-import { TimerTab } from '../../lib/components/tools/TimerTab';
 import { FieldControllerTab } from '../../lib/components/tools/FieldControllerTab';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 4;
+const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 3;
 
-const tabs = ['manual', 'scoring', 'timer', 'field-controller'] as const;
+const tabs = ['manual', 'scoring', 'field-controller'] as const;
 type ToolTab = (typeof tabs)[number];
 
 const tabMeta: { key: ToolTab; label: string; icon: typeof BookOpen }[] = [
 	{ key: 'manual', label: 'Game Manual', icon: BookOpen },
 	{ key: 'scoring', label: 'Scoring', icon: Calculator },
-	{ key: 'timer', label: 'Timer', icon: Timer },
 	{ key: 'field-controller', label: 'Field Control', icon: Gamepad2 }
 ];
 
@@ -38,8 +36,8 @@ export default function ToolsScreen() {
 
 	const indicatorTranslateX = useRef(
 		scrollX.interpolate({
-			inputRange: [0, SCREEN_WIDTH * 3],
-			outputRange: [0, TAB_WIDTH * 3],
+			inputRange: [0, SCREEN_WIDTH * 2],
+			outputRange: [0, TAB_WIDTH * 2],
 			extrapolate: 'clamp'
 		})
 	).current;
@@ -119,9 +117,7 @@ export default function ToolsScreen() {
 				<View style={[styles.tabPage, styles.tabPageFill]}>
 					<ScoringTab />
 				</View>
-				<ScrollView style={styles.tabPage} contentContainerStyle={styles.tabContent}>
-					<TimerTab />
-				</ScrollView>
+
 				<View style={[styles.tabPage, styles.tabPageFull]}>
 					<FieldControllerTab />
 				</View>
@@ -175,10 +171,5 @@ const styles = StyleSheet.create({
 	tabPageFull: {
 		alignSelf: 'stretch',
 		flex: 1
-	},
-	tabContent: {
-		paddingHorizontal: spacing.md,
-		paddingTop: spacing.md,
-		paddingBottom: spacing['3xl']
 	}
 });

@@ -1,9 +1,5 @@
 import { useEffect, useRef } from 'react';
-
-let Audio: typeof import('expo-av').Audio | null = null;
-try {
-	Audio = require('expo-av').Audio;
-} catch {}
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 
 const SoundFiles = {
 	start: require('../../../assets/sounds/Start.wav'),
@@ -14,45 +10,40 @@ const SoundFiles = {
 } as const;
 
 type SoundKey = keyof typeof SoundFiles;
-type AVSound = InstanceType<typeof import('expo-av').Audio.Sound>;
 
 export const useSoundManager = () => {
-	const sounds = useRef<Partial<Record<SoundKey, AVSound>>>({});
-	const loaded = useRef(false);
+	const sounds = useRef<Partial<Record<SoundKey, AudioPlayer>>>({});
 
 	useEffect(() => {
 		let cancelled = false;
 
 		const load = async () => {
-			if (!Audio) return;
-			await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+			await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true });
 			const entries = Object.entries(SoundFiles) as [SoundKey, number][];
 			for (const [key, file] of entries) {
-				const { sound } = await Audio.Sound.createAsync(file);
-				if (!cancelled) sounds.current[key] = sound;
+				const player = createAudioPlayer(file);
+				if (!cancelled) sounds.current[key] = player;
+				else player.remove();
 			}
-			if (!cancelled) loaded.current = true;
 		};
 
 		load();
 
 		return () => {
 			cancelled = true;
-			for (const sound of Object.values(sounds.current)) {
-				sound?.unloadAsync();
+			for (const player of Object.values(sounds.current)) {
+				player?.remove();
 			}
 			sounds.current = {};
-			loaded.current = false;
 		};
 	}, []);
 
 	const play = async (key: SoundKey) => {
-		const sound = sounds.current[key];
-		if (!sound) return;
+		const player = sounds.current[key];
+		if (!player) return;
 		try {
-			await sound.stopAsync();
-			await sound.setPositionAsync(0);
-			await sound.playAsync();
+			player.seekTo(0);
+			player.play();
 		} catch {}
 	};
 

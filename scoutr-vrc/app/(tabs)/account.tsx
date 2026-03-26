@@ -8,7 +8,8 @@ import {
 	Alert,
 	TextInput,
 	ActivityIndicator,
-	Share
+	Share,
+	RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -107,6 +108,26 @@ export default function AccountScreen() {
 	const [timeRemaining, setTimeRemaining] = useState('');
 	const [leavingId, setLeavingId] = useState<string | null>(null);
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+
+	// ── Pull to refresh ───────────────────────────────────────────────────
+	const [refreshing, setRefreshing] = useState(false);
+
+	const handleRefresh = async () => {
+		setRefreshing(true);
+		await Promise.all(
+			scoutingTeams.map((t) =>
+				Promise.all([
+					fetchMyInviteCode(t.id).then((code) =>
+						setInviteCodes((prev) => ({ ...prev, [t.id]: code }))
+					),
+					fetchTeamMembers(t.id).then((members) =>
+						setMembersMap((prev) => ({ ...prev, [t.id]: members }))
+					)
+				])
+			)
+		);
+		setRefreshing(false);
+	};
 
 	// ── Display name edit ───────────────────────────────────────────────────
 	const [editingName, setEditingName] = useState(false);
@@ -396,7 +417,17 @@ export default function AccountScreen() {
 
 	return (
 		<SafeAreaView style={styles.safe} edges={['top']}>
-			<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+			<ScrollView
+				style={styles.scroll}
+				contentContainerStyle={styles.content}
+				refreshControl={
+					<RefreshControl
+						refreshing={refreshing}
+						onRefresh={handleRefresh}
+						tintColor={colors.primary}
+					/>
+				}
+			>
 				<Text style={styles.heading}>Account</Text>
 
 				<View style={styles.card}>

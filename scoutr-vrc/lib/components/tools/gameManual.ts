@@ -509,7 +509,12 @@ const parseOffcanvases = (doc: ReturnType<typeof parse>, ruleMap: Record<string,
 	}
 };
 
-export const parseManual = (html: string): ManualData => {
+const yieldThread = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+export const parseManual = async (
+	html: string,
+	onProgress?: (progress: number, label: string) => void
+): Promise<ManualData> => {
 	const doc = parse(html);
 	const version = extractVersion(html);
 	const sections: ManualSection[] = [];
@@ -630,7 +635,13 @@ export const parseManual = (html: string): ManualData => {
 	};
 
 	const seenSectionIds = new Set<string>();
-	for (const s of sectionsMeta) {
+	for (let si = 0; si < sectionsMeta.length; si++) {
+		const s = sectionsMeta[si];
+		await yieldThread();
+		onProgress?.(
+			0.65 + (si / sectionsMeta.length) * 0.34,
+			`Parsing ${s.title}...`
+		);
 		if (seenSectionIds.has(s.id)) continue;
 		seenSectionIds.add(s.id);
 		const seenSubIds = new Set<string>();
@@ -654,17 +665,30 @@ export const parseManual = (html: string): ManualData => {
 export const getManual = async (
 	onProgress?: (progress: number, label: string) => void
 ): Promise<ManualData> => {
-	onProgress?.(0.05, 'Connecting...');
+	let current = 0.05;
+	onProgress?.(current, 'Loading...');
+
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	if (onProgress) {
+		const tick = () => {
+			current += (0.63 - current) * 0.045;
+			onProgress(current, 'Loading...');
+			timer = setTimeout(tick, 100);
+		};
+		timer = setTimeout(tick, 100);
+	}
 
 	let html: string;
 	try {
 		html = await fetchManualHTML();
 	} catch (err) {
+		if (timer !== null) clearTimeout(timer);
 		throw err;
 	}
 
-	onProgress?.(0.65, 'Processing manual...');
-	const data = parseManual(html);
+	if (timer !== null) clearTimeout(timer);
+
+	const data = await parseManual(html, onProgress);
 	onProgress?.(1, 'Done');
 	return data;
 };
