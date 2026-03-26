@@ -1,54 +1,41 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
 	Modal,
 	View,
 	Text,
 	ScrollView,
 	Pressable,
-	Image,
 	StyleSheet,
 	PanResponder,
 	Dimensions
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X } from 'lucide-react-native';
+import { X, BookOpen } from 'lucide-react-native';
 import { colors, font, radius, spacing } from '../../theme';
 import type { ManualEntry } from './gameManual';
+import { BlocksView, InlineText } from './BlockRenderer';
+import { ImageViewerModal } from './ImageViewer';
 
 interface Props {
 	entry: ManualEntry | null;
 	visible: boolean;
 	onClose: () => void;
 	onCrossRef: (code: string) => void;
+	onNavigateToSource?: (entry: ManualEntry) => void;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.6;
 const DISMISS_THRESHOLD = 80;
-const INLINE_RULE_SPLIT = /(<[A-Z]+\d+[A-Za-z]*>)/g;
 
-const renderBody = (body: string, onCrossRef: (code: string) => void): React.ReactNode[] => {
-	const parts = body.split(INLINE_RULE_SPLIT);
-	return parts.map((part, i) => {
-		const match = part.match(/^<([A-Z]+\d+[A-Za-z]*)>$/);
-		if (match) {
-			return (
-				<Text key={i} style={styles.crossRef} onPress={() => onCrossRef(match[1])}>
-					{part}
-				</Text>
-			);
-		}
-		return (
-			<Text key={i} style={styles.bodyText}>
-				{part}
-			</Text>
-		);
-	});
-};
-
-export const RuleDrawer = ({ entry, visible, onClose, onCrossRef }: Props) => {
+export const RuleDrawer = ({ entry, visible, onClose, onCrossRef, onNavigateToSource }: Props) => {
 	const insets = useSafeAreaInsets();
 	const dragY = useRef(0);
+	const [imageViewer, setImageViewer] = useState<{
+		src: string;
+		alt: string;
+		caption?: string;
+	} | null>(null);
 
 	const panResponder = useRef(
 		PanResponder.create({
@@ -89,7 +76,16 @@ export const RuleDrawer = ({ entry, visible, onClose, onCrossRef }: Props) => {
 							<Text style={styles.badgeText}>{label}</Text>
 						</View>
 					) : null}
-					<Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+					{entry?.sourceId && onNavigateToSource ? (
+						<Pressable
+							onPress={() => onNavigateToSource(entry!)}
+							hitSlop={12}
+							style={styles.iconBtn}
+						>
+							<BookOpen size={18} color={colors.mutedForeground} strokeWidth={2} />
+						</Pressable>
+					) : null}
+					<Pressable onPress={onClose} hitSlop={12} style={styles.iconBtn}>
 						<X size={20} color={colors.mutedForeground} strokeWidth={2} />
 					</Pressable>
 				</View>
@@ -101,18 +97,31 @@ export const RuleDrawer = ({ entry, visible, onClose, onCrossRef }: Props) => {
 				>
 					{entry?.summary ? <Text style={styles.summary}>{entry.summary}</Text> : null}
 
-					{entry?.body ? (
-						<Text style={styles.bodyContainer}>{renderBody(entry.body, onCrossRef)}</Text>
+					{entry && entry.leadSpans.length > 0 ? (
+						<InlineText
+							spans={entry.leadSpans}
+							onCrossRef={onCrossRef}
+							style={styles.bodyContainer}
+						/>
 					) : null}
 
-					{entry?.images?.map((img, i) => (
-						<View key={i} style={styles.imageContainer}>
-							<Image source={{ uri: img.src }} style={styles.image} resizeMode="contain" />
-							{img.caption ? <Text style={styles.caption}>{img.caption}</Text> : null}
-						</View>
-					))}
+					{entry ? (
+						<BlocksView
+							blocks={entry.blocks}
+							onCrossRef={onCrossRef}
+							onImagePress={(src, alt, caption) => setImageViewer({ src, alt, caption })}
+						/>
+					) : null}
 				</ScrollView>
 			</View>
+			{imageViewer ? (
+				<ImageViewerModal
+					src={imageViewer.src}
+					alt={imageViewer.alt}
+					caption={imageViewer.caption}
+					onClose={() => setImageViewer(null)}
+				/>
+			) : null}
 		</Modal>
 	);
 };
@@ -169,6 +178,9 @@ const styles = StyleSheet.create({
 		color: colors.foreground
 	},
 	closeBtn: {
+		padding: spacing.xs
+	},
+	iconBtn: {
 		padding: spacing.xs
 	},
 	scroll: {

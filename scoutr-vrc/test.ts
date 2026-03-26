@@ -1,98 +1,332 @@
-import { parse, HTMLElement } from 'node-html-parser';
+import { parse, HTMLElement, TextNode } from 'node-html-parser';
 
 const content = await Bun.file('./push-back-manual.html').text();
 const doc = parse(content);
 
-const cleanText = (t: string) => t.replace(/\s+/g, ' ').replace(/&amp;/g, '&').trim();
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// ── Version ───────────────────────────────────────────────────────────────────
-const versionMatch = content.match(/Version \d+\.\d+ - [A-Za-z]+ \d+, \d{4}/);
-console.log('VERSION:', versionMatch?.[0] ?? 'unknown');
+type InlineSegment =
+	| { t: 'text'; s: string }
+	| { t: 'ref'; id: string; s: string }
+	| { t: 'bold'; s: string }
+	| { t: 'italic'; s: string };
 
-// ── Sidebar nav → section/subsection hierarchy ────────────────────────────────
-const outerNav = doc.querySelector('nav.nav.nav-pills.flex-column');
-if (!outerNav) throw new Error('Sidebar nav not found');
+const LIST_CLASSES = [
+	'bullet',
+	'subbullet',
+	'subsubbullet',
+	'numbers',
+	'alphabullet',
+	'romanbullet'
+] as const;
+type ListItemClass = (typeof LIST_CLASSES)[number];
 
-const sectionsMeta: { id: string; title: string; subsections: { id: string; title: string }[] }[] =
-	[];
-let currentSection: (typeof sectionsMeta)[0] | null = null;
+interface ListItem {
+	cls: ListItemClass;
+	violations: boolean;
+	spans: InlineSegment[];
+	children: ListItem[];
+}
 
-for (const node of outerNav.childNodes) {
-	if (!(node instanceof HTMLElement)) continue;
-	const tag = node.tagName?.toLowerCase();
-	if (tag === 'a') {
-		const id = (node.getAttribute('href') ?? '').replace('#', '');
-		const title = cleanText(node.text);
-		if (['prefix', 'changelog', 'quickreference'].includes(id)) {
-			currentSection = null;
+type Block =
+	| { type: 'paragraph'; spans: InlineSegment[] }
+	| { type: 'note'; spans: InlineSegment[] }
+	| { type: 'list'; ordered: boolean; items: ListItem[] }
+	| { type: 'figure'; src: string; alt: string; caption: string }
+	| { type: 'redbox'; blocks: Block[] }
+	| { type: 'greybox'; blocks: Block[] }
+	| { type: 'vexubox'; blocks: Block[] }
+	| { type: 'table'; headers: string[]; rows: string[][] };
+
+interface ManualEntry {
+	type: 'rule' | 'definition' | 'content';
+	code?: string;
+	term?: string;
+	summary?: string;
+	leadSpans: InlineSegment[];
+	blocks: Block[];
+}
+
+interface ParsedSubsection {
+	id: string;
+	title: string;
+	entries: ManualEntry[];
+}
+
+// ── Inline text helpers ────────────────────────────────────────────────────────
+
+const norm = (s: string) => s.replace(/\s+/g, ' ');
+
+function parseInline(el: HTMLElement): InlineSegment[] {
+	const result: InlineSegment[] = [];
+	for (const node of el.childNodes) {
+		if (node instanceof TextNode) {
+			const s = norm(node.text);
+			if (s) result.push({ t: 'text', s });
 			continue;
 		}
-		currentSection = { id, title, subsections: [] };
-		sectionsMeta.push(currentSection);
-	} else if (tag === 'nav' && currentSection) {
-		for (const a of node.querySelectorAll('a')) {
-			currentSection.subsections.push({
-				id: (a.getAttribute('href') ?? '').replace('#', ''),
-				title: cleanText(a.text)
-			});
+		if (!(node instanceof HTMLElement)) continue;
+		const tag = node.tagName.toLowerCase();
+
+		if (tag === 'a' && node.getAttribute('data-bs-toggle') === 'offcanvas') {
+			const id = (node.getAttribute('href') ?? '').replace('#', '');
+			const s = node.text.trim();
+			if (s) result.push({ t: 'ref', id, s });
+			continue;
 		}
+		if (tag === 'b' || tag === 'strong') {
+			const s = node.text.trim();
+			if (s) result.push({ t: 'bold', s });
+			continue;
+		}
+		if (tag === 'i' || tag === 'em') {
+			const s = node.text.trim();
+			if (s) result.push({ t: 'italic', s });
+			continue;
+		}
+		if (tag === 'span') {
+			const cls = node.getAttribute('class') ?? '';
+			if (cls.includes('d_Term') || cls.includes('r_ruleSumm')) continue;
+			result.push(...parseInline(node));
+			continue;
+		}
+		if (['ul', 'ol', 'div', 'table', 'hr', 'br', 'img'].includes(tag)) continue;
+		result.push(...parseInline(node));
 	}
+	return result;
 }
 
-console.log('\n=== SECTIONS ===');
-for (const s of sectionsMeta) {
-	console.log(`[${s.id}] ${s.title}`);
-	for (const sub of s.subsections) console.log(`  [${sub.id}] ${sub.title}`);
+const spansText = (spans: InlineSegment[]) =>
+	spans
+		.map((s) => s.s)
+		.join('')
+		.trim();
+
+// Parse inline content that follows the d_Term (and optional r_ruleSumm) span
+function parseLeadSpans(el: HTMLElement): InlineSegment[] {
+	const result: InlineSegment[] = [];
+	let past = false;
+	let stripDash = false;
+
+	for (const node of el.childNodes) {
+		if (node instanceof HTMLElement) {
+			const cls = node.getAttribute('class') ?? '';
+			if (cls.includes('d_Term')) {
+				past = true;
+				stripDash = true;
+				continue;
+			}
+			if (cls.includes('r_ruleSumm')) {
+				stripDash = false;
+				continue;
+			}
+			const tag = node.tagName.toLowerCase();
+			if (['ul', 'ol', 'div', 'table'].includes(tag)) continue;
+		}
+		if (!past) continue;
+
+		if (node instanceof TextNode) {
+			let s = norm(node.text);
+			if (stripDash) {
+				s = s.replace(/^\s*[-–—]\s*/, '');
+				stripDash = false;
+			}
+			if (s.trim()) result.push({ t: 'text', s });
+			continue;
+		}
+		if (!(node instanceof HTMLElement)) continue;
+		const tag = node.tagName.toLowerCase();
+		if (tag === 'a' && node.getAttribute('data-bs-toggle') === 'offcanvas') {
+			const id = (node.getAttribute('href') ?? '').replace('#', '');
+			const s = node.text.trim();
+			if (s) result.push({ t: 'ref', id, s });
+			continue;
+		}
+		if (tag === 'b' || tag === 'strong') {
+			const s = node.text.trim();
+			if (s) result.push({ t: 'bold', s });
+			continue;
+		}
+		if (tag === 'i' || tag === 'em') {
+			const s = node.text.trim();
+			if (s) result.push({ t: 'italic', s });
+			continue;
+		}
+		result.push(...parseInline(node));
+	}
+	return result;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function convertBodyToText(el: HTMLElement): string {
-	let r = el.innerHTML;
-	r = r.replace(
-		/<a[^>]*data-bs-toggle="offcanvas"[^>]*href="#([^"]+)"[^>]*>([\s\S]*?)<\/a>/g,
-		(_m, _h, text) =>
-			text
-				.replace(/<[^>]+>/g, '')
-				.replace(/&lt;/g, '<')
-				.replace(/&gt;/g, '>')
-				.trim()
-	);
-	r = r
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&amp;/g, '&')
-		.replace(/&nbsp;/g, ' ')
-		.replace(/&#\d+;/g, ' ');
-	return cleanText(r);
+// ── List parser ───────────────────────────────────────────────────────────────
+
+function parseListItemClass(cls: string): { itemCls: ListItemClass; violations: boolean } {
+	const tokens = cls.split(/\s+/);
+	const violations = tokens.includes('violations');
+	const itemCls = LIST_CLASSES.find((c) => tokens.includes(c)) ?? 'bullet';
+	return { itemCls, violations };
 }
 
-function extractImages(el: HTMLElement): { src: string; caption: string }[] {
-	const results: { src: string; caption: string }[] = [];
-	for (const img of el.querySelectorAll('img')) {
-		const src = img.getAttribute('src') ?? '';
-		if (!src) continue;
-		let caption = img.getAttribute('alt') ?? '';
-		for (const p of el.querySelectorAll('p.text-center')) {
-			const t = p.querySelector('span.d_Term');
-			if (t && /Figure/.test(t.text)) {
-				caption = cleanText(p.text);
-				break;
+function parseListItems(el: HTMLElement): ListItem[] {
+	const items: ListItem[] = [];
+	for (const li of el.childNodes) {
+		if (!(li instanceof HTMLElement) || li.tagName.toLowerCase() !== 'li') continue;
+		const cls = li.getAttribute('class') ?? '';
+		const { itemCls, violations } = parseListItemClass(cls);
+
+		const spans: InlineSegment[] = [];
+		const children: ListItem[] = [];
+
+		for (const child of li.childNodes) {
+			if (child instanceof HTMLElement) {
+				const tag = child.tagName.toLowerCase();
+				if (tag === 'ul' || tag === 'ol') {
+					children.push(...parseListItems(child));
+					continue;
+				}
+				if (tag === 'div') continue;
+				if (tag === 'a' && child.getAttribute('data-bs-toggle') === 'offcanvas') {
+					const id = (child.getAttribute('href') ?? '').replace('#', '');
+					const s = child.text.trim();
+					if (s) spans.push({ t: 'ref', id, s });
+					continue;
+				}
+				if (tag === 'b' || tag === 'strong') {
+					const s = child.text.trim();
+					if (s) spans.push({ t: 'bold', s });
+					continue;
+				}
+				if (tag === 'i' || tag === 'em') {
+					const s = child.text.trim();
+					if (s) spans.push({ t: 'italic', s });
+					continue;
+				}
+				spans.push(...parseInline(child));
+			} else if (child instanceof TextNode) {
+				const s = norm(child.text);
+				if (s) spans.push({ t: 'text', s });
 			}
 		}
-		results.push({ src, caption });
+		items.push({ cls: itemCls, violations, spans, children });
 	}
-	return results;
+	return items;
 }
 
-// ── Regex fallback: extract div by id when node-html-parser querySelector fails ──
+// ── Block parser ──────────────────────────────────────────────────────────────
+
+function parseBlock(el: HTMLElement): Block | Block[] | null {
+	const tag = el.tagName.toLowerCase();
+	const cls = el.getAttribute('class') ?? '';
+
+	if (tag === 'p') {
+		if (cls.includes('VRC_Section-Sub-head') || cls.includes('VRC_Section-Header')) return null;
+		if (cls.includes('text-center')) return null;
+		if (cls.includes('notes')) return { type: 'note', spans: parseInline(el) };
+		const spans = parseInline(el);
+		if (!spansText(spans)) return null;
+		return { type: 'paragraph', spans };
+	}
+
+	if (tag === 'ul' || tag === 'ol') {
+		const items = parseListItems(el);
+		if (items.length === 0) return null;
+		return { type: 'list', ordered: tag === 'ol', items };
+	}
+
+	if (tag === 'div') {
+		if (cls.includes('redbox')) return { type: 'redbox', blocks: parseChildBlocks(el) };
+		if (cls.includes('greybox')) return { type: 'greybox', blocks: parseChildBlocks(el) };
+		if (cls.includes('vexubox')) return { type: 'vexubox', blocks: parseChildBlocks(el) };
+		if (cls.includes('row')) {
+			const figs: Block[] = [];
+			for (const col of el.querySelectorAll('.col')) {
+				const img = col.querySelector('img');
+				if (!img) continue;
+				const src = img.getAttribute('src') ?? '';
+				if (!src) continue;
+				const captionEl = col.querySelector('p.text-center');
+				const caption = (captionEl?.text ?? img.getAttribute('alt') ?? '').trim();
+				figs.push({ type: 'figure', src, alt: img.getAttribute('alt') ?? '', caption });
+			}
+			return figs.length > 0 ? figs : null;
+		}
+		const inner = parseChildBlocks(el);
+		return inner.length > 0 ? inner : null;
+	}
+
+	if (tag === 'table') {
+		const headers = el.querySelectorAll('thead th').map((th) => th.text.trim());
+		const rows = el
+			.querySelectorAll('tbody tr')
+			.map((tr) => tr.querySelectorAll('td').map((td) => td.text.trim()));
+		if (headers.length === 0 && rows.length === 0) return null;
+		return { type: 'table', headers, rows };
+	}
+
+	return null;
+}
+
+function parseChildBlocks(el: HTMLElement): Block[] {
+	const blocks: Block[] = [];
+	let pending: InlineSegment[] = [];
+
+	const flush = () => {
+		if (pending.length > 0 && spansText(pending)) {
+			blocks.push({ type: 'paragraph', spans: pending });
+		}
+		pending = [];
+	};
+
+	for (const child of el.childNodes) {
+		if (child instanceof TextNode) {
+			const s = norm(child.text);
+			if (s && (s.trim() || pending.length > 0)) pending.push({ t: 'text', s });
+			continue;
+		}
+		if (!(child instanceof HTMLElement)) continue;
+		const tag = child.tagName.toLowerCase();
+
+		if (['p', 'ul', 'ol', 'div', 'table', 'hr'].includes(tag)) {
+			flush();
+			const r = parseBlock(child);
+			if (r !== null) {
+				if (Array.isArray(r)) blocks.push(...r);
+				else blocks.push(r);
+			}
+			continue;
+		}
+		// Inline element — accumulate into pending paragraph
+		if (tag === 'a' && child.getAttribute('data-bs-toggle') === 'offcanvas') {
+			const id = (child.getAttribute('href') ?? '').replace('#', '');
+			const s = child.text.trim();
+			if (s) pending.push({ t: 'ref', id, s });
+		} else if (tag === 'b' || tag === 'strong') {
+			const s = child.text.trim();
+			if (s) pending.push({ t: 'bold', s });
+		} else if (tag === 'i' || tag === 'em') {
+			const s = child.text.trim();
+			if (s) pending.push({ t: 'italic', s });
+		} else {
+			pending.push(...parseInline(child));
+		}
+	}
+	flush();
+	return blocks;
+}
+
+function addBlock(entry: ManualEntry, r: Block | Block[] | null) {
+	if (r === null) return;
+	if (Array.isArray(r)) entry.blocks.push(...r);
+	else entry.blocks.push(r);
+}
+
+// ── Div-by-id (regex fallback) ────────────────────────────────────────────────
+
 function getContentDiv(id: string): HTMLElement | null {
 	const el = doc.querySelector(`[id="${id}"]`);
 	if (el) return el;
 
 	const idIdx = content.indexOf(`id="${id}"`);
 	if (idIdx === -1) return null;
-
 	const divStart = content.lastIndexOf('<div', idIdx);
 	if (divStart === -1) return null;
 
@@ -108,8 +342,7 @@ function getContentDiv(id: string): HTMLElement | null {
 		} else {
 			depth--;
 			if (depth === 0) {
-				const chunk = content.slice(divStart, nextClose + 6);
-				return parse(chunk).querySelector('div') ?? null;
+				return parse(content.slice(divStart, nextClose + 6)).querySelector('div') ?? null;
 			}
 			i = nextClose + 6;
 		}
@@ -117,160 +350,226 @@ function getContentDiv(id: string): HTMLElement | null {
 	return null;
 }
 
-// ── Parse subsection: ALL rules/defs are inline via span.d_Term ──────────────
-// Rule:       <p><span class="d_Term">&lt;SC1&gt;</span> rule text</p>
-// Definition: <p><span class="d_Term">TermName</span> - definition text</p>
+// ── Subsection parser ─────────────────────────────────────────────────────────
 
-interface ParsedEntry {
-	type: 'rule' | 'definition' | 'content';
-	code?: string;
-	summary?: string;
-	term?: string;
-	body: string;
-	images: { src: string; caption: string }[];
-}
-
-function parseSubsectionDiv(
-	id: string,
-	title: string
-): { id: string; title: string; entries: ParsedEntry[] } {
+function parseSubsectionDiv(id: string, title: string): ParsedSubsection {
 	const div = getContentDiv(id);
-	const entries: ParsedEntry[] = [];
+	const entries: ManualEntry[] = [];
 	if (!div) {
 		console.warn(`[WARN] No div id="${id}"`);
 		return { id, title, entries };
 	}
 
-	for (const p of div.querySelectorAll('p')) {
-		const t = p.querySelector('span.d_Term');
-		if (!t) continue;
-		const raw = t.innerHTML.replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
-		if (!raw) continue;
-		const codeMatch = raw.match(/^<([A-Z]+\d+[A-Za-z]*)>$/);
-		if (codeMatch) {
-			const code = codeMatch[1];
-			const summary = cleanText(p.querySelector('span.r_ruleSumm')?.text ?? '');
-			let body = convertBodyToText(p);
-			// Strip leading "<CODE>" from body
-			body = body.replace(new RegExp(`^<${code}>\\s*`), '').trim();
-			entries.push({
-				type: 'rule',
-				code,
-				summary: summary || undefined,
-				body,
-				images: extractImages(p)
-			});
-		} else if (!/^Figure/.test(raw)) {
-			const term = cleanText(raw);
-			let body = convertBodyToText(p);
-			// Strip leading "Term - " from body
-			body = body
-				.replace(new RegExp(`^${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[-–—]\\s*`), '')
-				.trim();
-			entries.push({ type: 'definition', term, body, images: extractImages(p) });
+	let current: ManualEntry | null = null;
+
+	for (const node of div.childNodes) {
+		if (!(node instanceof HTMLElement)) continue;
+		const tag = node.tagName.toLowerCase();
+		const cls = node.getAttribute('class') ?? '';
+
+		if (tag === 'hr' || cls.includes('VRC_Section-Sub-head') || cls.includes('VRC_Section-Header'))
+			continue;
+
+		// Detect rule/definition: direct <p> whose first-child span is d_Term
+		if (tag === 'p') {
+			const termSpan =
+				node.childNodes.find(
+					(n): n is HTMLElement =>
+						n instanceof HTMLElement &&
+						n.tagName.toLowerCase() === 'span' &&
+						(n.getAttribute('class') ?? '').includes('d_Term')
+				) ?? null;
+
+			if (termSpan) {
+				const rawTerm = termSpan.text.trim();
+				if (!rawTerm || /^Figure\s/i.test(rawTerm)) {
+					if (current) addBlock(current, parseBlock(node));
+					continue;
+				}
+
+				const codeMatch = rawTerm.match(/^<([A-Z]+\d+[A-Za-z]*)>$/);
+				if (codeMatch) {
+					const code = codeMatch[1];
+					const summaryEl = node.querySelector('span.r_ruleSumm');
+					const summary = summaryEl?.text.trim() ?? '';
+					current = {
+						type: 'rule',
+						code,
+						summary: summary || undefined,
+						leadSpans: parseLeadSpans(node),
+						blocks: []
+					};
+				} else {
+					current = {
+						type: 'definition',
+						term: rawTerm,
+						leadSpans: parseLeadSpans(node),
+						blocks: []
+					};
+				}
+				entries.push(current);
+
+				// Hoist any block-level children inside the <p> (e.g. nested <ul>)
+				for (const child of node.childNodes) {
+					if (!(child instanceof HTMLElement)) continue;
+					const ct = child.tagName.toLowerCase();
+					if (['ul', 'ol', 'div', 'table'].includes(ct)) addBlock(current, parseBlock(child));
+				}
+				continue;
+			}
 		}
+
+		if (!current) {
+			current = { type: 'content', leadSpans: [], blocks: [] };
+			entries.push(current);
+		}
+		addBlock(current, parseBlock(node));
 	}
 
-	// Collect images not already in entries (standalone images in the subsection)
-	const allImgs = extractImages(div);
-	const usedSrcs = new Set(entries.flatMap((e) => e.images.map((i) => i.src)));
-	const standaloneImgs = allImgs.filter((i) => !usedSrcs.has(i.src));
-	if (standaloneImgs.length > 0) {
-		if (entries.length > 0) {
-			entries[entries.length - 1].images.push(...standaloneImgs);
-		} else {
-			entries.push({
-				type: 'content',
-				body: convertBodyToText(div).slice(0, 500),
-				images: standaloneImgs
-			});
-		}
-	}
-
-	if (entries.length === 0) {
-		entries.push({ type: 'content', body: convertBodyToText(div).slice(0, 500), images: [] });
-	}
 	return { id, title, entries };
 }
 
-const parsedSections = sectionsMeta.map((s) => ({
-	id: s.id,
-	title: s.title,
-	subsections:
-		s.subsections.length === 0
-			? [parseSubsectionDiv(s.id, s.title)]
-			: s.subsections.map((sub) => parseSubsectionDiv(sub.id, sub.title))
-}));
+// ── Section 2 subsection nav ──────────────────────────────────────────────────
 
-// ── Build ruleMap from parsed entries (for cross-ref lookups in the app) ──────
-const ruleMap: Record<
-	string,
-	{ code: string; body: string; images: { src: string; caption: string }[] }
-> = {};
-for (const section of parsedSections) {
-	for (const sub of section.subsections) {
-		for (const e of sub.entries) {
-			if (e.type === 'rule' && e.code)
-				ruleMap[e.code] = { code: e.code, body: e.body, images: e.images };
+const outerNav = doc.querySelector('nav.nav.nav-pills.flex-column');
+if (!outerNav) throw new Error('Sidebar nav not found');
+
+const sec2Meta: { id: string; title: string }[] = [];
+let inSec2 = false;
+
+for (const node of outerNav.childNodes) {
+	if (!(node instanceof HTMLElement)) continue;
+	const tag = node.tagName.toLowerCase();
+	if (tag === 'a') {
+		const href = (node.getAttribute('href') ?? '').replace('#', '');
+		if (href === 'sec2') {
+			inSec2 = true;
+			continue;
+		}
+		if (/^sec\d/.test(href) && href !== 'sec2') {
+			if (inSec2) break;
+		}
+	}
+	if (inSec2 && tag === 'nav') {
+		for (const a of node.querySelectorAll('a')) {
+			sec2Meta.push({
+				id: (a.getAttribute('href') ?? '').replace('#', ''),
+				title: a.text.replace(/\s+/g, ' ').trim()
+			});
 		}
 	}
 }
 
-// ── Summary ───────────────────────────────────────────────────────────────────
-console.log('\n=== SUMMARY ===');
+console.log('=== Section 2 Subsections ===');
+for (const s of sec2Meta) console.log(`  [${s.id}] ${s.title}`);
+
+// ── Parse Section 2 ───────────────────────────────────────────────────────────
+
+const sec2 = sec2Meta.map((s) => parseSubsectionDiv(s.id, s.title));
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+
+console.log('\n=== Stats ===');
+const blockCounts: Record<string, number> = {};
 let totalRules = 0,
-	totalDefs = 0,
-	totalImgs = 0;
-for (const section of parsedSections) {
-	console.log(`\n${section.title}`);
-	for (const sub of section.subsections) {
-		const rules = sub.entries.filter((e) => e.type === 'rule').length;
-		const defs = sub.entries.filter((e) => e.type === 'definition').length;
-		const imgs = sub.entries.reduce((n, e) => n + e.images.length, 0);
-		totalRules += rules;
-		totalDefs += defs;
-		totalImgs += imgs;
-		console.log(`  ${sub.title}: ${rules} rules, ${defs} defs, ${imgs} images`);
-	}
-}
-console.log(`\nTOTAL: ${totalRules} rules, ${totalDefs} defs, ${totalImgs} images`);
-console.log(`Unique rule codes in ruleMap: ${Object.keys(ruleMap).length}`);
+	totalDefs = 0;
 
-// ── Sample rule ───────────────────────────────────────────────────────────────
-const rSec = parsedSections.find((s) =>
-	s.subsections.some((sub) => sub.entries.some((e) => e.type === 'rule'))
-);
-if (rSec) {
-	const rSub = rSec.subsections.find((sub) => sub.entries.some((e) => e.type === 'rule'))!;
-	const rEntry = rSub.entries.find((e) => e.type === 'rule')!;
-	console.log('\n=== SAMPLE RULE ===');
-	console.log('Code:', rEntry.code);
-	console.log('Summary:', (rEntry as any).summary ?? '(none)');
-	console.log('Body (300 chars):', rEntry.body.slice(0, 300));
-	console.log('Images:', rEntry.images.length, rEntry.images[0]?.src ?? '');
-}
-
-// ── Sample definition ─────────────────────────────────────────────────────────
-const dSec = parsedSections.find((s) =>
-	s.subsections.some((sub) => sub.entries.some((e) => e.type === 'definition'))
-);
-if (dSec) {
-	const dSub = dSec.subsections.find((sub) => sub.entries.some((e) => e.type === 'definition'))!;
-	const dEntry = dSub.entries.find((e) => e.type === 'definition')!;
-	console.log('\n=== SAMPLE DEFINITION ===');
-	console.log('Term:', dEntry.term);
-	console.log('Body (200 chars):', dEntry.body.slice(0, 200));
-}
-
-// ── Empty / warnings ──────────────────────────────────────────────────────────
-console.log('\n=== EMPTY / WARN ===');
-let issues = 0;
-for (const section of parsedSections) {
-	for (const sub of section.subsections) {
-		if (sub.entries.length === 0) {
-			console.log(`  EMPTY: [${sub.id}] ${sub.title} in ${section.title}`);
-			issues++;
+for (const sub of sec2) {
+	const rules = sub.entries.filter((e) => e.type === 'rule').length;
+	const defs = sub.entries.filter((e) => e.type === 'definition').length;
+	totalRules += rules;
+	totalDefs += defs;
+	for (const e of sub.entries) {
+		for (const b of e.blocks) {
+			blockCounts[b.type] = (blockCounts[b.type] ?? 0) + 1;
 		}
 	}
+	console.log(`  ${sub.title}: ${rules} rules, ${defs} defs`);
 }
-if (issues === 0) console.log('  none ✓');
+console.log(`TOTAL: ${totalRules} rules, ${totalDefs} defs`);
+console.log('Block types:', blockCounts);
+
+// ── Deep sample: first rule per subsection ────────────────────────────────────
+
+function renderBlock(b: Block, indent = '    '): string {
+	switch (b.type) {
+		case 'paragraph':
+			return `${indent}[para] "${spansText(b.spans).slice(0, 90)}"`;
+		case 'note':
+			return `${indent}[note] "${spansText(b.spans).slice(0, 90)}"`;
+		case 'list': {
+			const label = b.ordered ? 'ol' : 'ul';
+			const preview = b.items
+				.slice(0, 3)
+				.map((it) => {
+					const v = it.violations ? ' [V]' : '';
+					return `${indent}  [${it.cls}${v}] "${spansText(it.spans).slice(0, 65)}"${it.children.length ? ` +${it.children.length}` : ''}`;
+				})
+				.join('\n');
+			return `${indent}[${label}:${b.items.length}]\n${preview}${b.items.length > 3 ? `\n${indent}  ...+${b.items.length - 3}` : ''}`;
+		}
+		case 'figure':
+			return `${indent}[fig] "${b.caption.slice(0, 70)}"`;
+		case 'redbox': {
+			const inner = b.blocks
+				.map((bb) => spansText((bb as any).spans ?? []).slice(0, 50))
+				.join(' | ');
+			return `${indent}[redbox:${b.blocks.length}] ${inner}`;
+		}
+		case 'greybox':
+			return `${indent}[greybox:${b.blocks.length} blocks]`;
+		case 'vexubox': {
+			const inner = b.blocks.map((bb) => spansText((bb as any).spans ?? []).slice(0, 50)).join(' ');
+			return `${indent}[vexubox:${b.blocks.length}] "${inner}"`;
+		}
+		case 'table':
+			return `${indent}[table] hdrs=${b.headers.join('|')} rows=${b.rows.length}`;
+	}
+}
+
+console.log('\n=== First Rule Per Subsection ===');
+for (const sub of sec2) {
+	const rule = sub.entries.find((e) => e.type === 'rule');
+	if (!rule) continue;
+	console.log(`\n[${sub.id}] ${sub.title}`);
+	console.log(`  <${rule.code}>${rule.summary ? ' — ' + rule.summary : ''}`);
+	const lead = spansText(rule.leadSpans).slice(0, 120);
+	if (lead) console.log(`  Lead: "${lead}"`);
+	for (const b of rule.blocks) console.log(renderBlock(b));
+}
+
+// ── First 3 definitions ───────────────────────────────────────────────────────
+
+console.log('\n=== First 3 Definitions ===');
+let defCount = 0;
+outer: for (const sub of sec2) {
+	for (const e of sub.entries) {
+		if (e.type !== 'definition') continue;
+		console.log(`\n  "${e.term}"`);
+		console.log(`  Lead: "${spansText(e.leadSpans).slice(0, 100)}"`);
+		console.log(`  Blocks: ${e.blocks.length}`);
+		for (const b of e.blocks.slice(0, 3)) console.log(renderBlock(b));
+		if (++defCount >= 3) break outer;
+	}
+}
+
+// ── One example of each block type ───────────────────────────────────────────
+
+console.log('\n=== Block Type Samples ===');
+const wanted = ['list', 'note', 'redbox', 'greybox', 'vexubox', 'figure', 'table'] as const;
+for (const type of wanted) {
+	let found = false;
+	for (const sub of sec2) {
+		for (const e of sub.entries) {
+			const b = e.blocks.find((b) => b.type === type);
+			if (b) {
+				console.log(`  [${type}] in <${e.code ?? e.term ?? 'content'}> (${sub.title})`);
+				console.log(renderBlock(b, '    '));
+				found = true;
+				break;
+			}
+		}
+		if (found) break;
+	}
+	if (!found) console.log(`  [${type}] NOT FOUND`);
+}

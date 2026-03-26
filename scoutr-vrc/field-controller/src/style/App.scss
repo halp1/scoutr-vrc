@@ -1,0 +1,234 @@
+@font-face {
+  font-family: "Digital-7";
+  src: url("../../public/digital-7.mono.ttf");
+}
+
+html {
+  height: 100%;
+
+  font: 4vh "Digital-7", monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (max-width: 160vh) {
+  html {
+    font-size: 2.5vw;
+  }
+}
+
+@media (max-width: 120vh) {
+  .timer-info-body {
+    right: auto !important;
+    top: 36vh !important;
+    left: 1vw;
+    z-index: 100;
+    font-size: max(2.5vw, 4vh) !important;
+
+    .profile-setting {
+      position: absolute;
+      left: calc(max(2.5vw, 4vh) * 6);
+      top: 0;
+      margin: 0 !important;
+    }
+  }
+}
+
+@media (max-width: 100vh) {
+  .indicator {
+    display: none;
+  }
+
+  .profile span.selected::after {
+    content: "";
+    border: 1px solid #ffffff;
+    position: absolute;
+    width: 100%;
+    height: 0.05em;
+    left: 0;
+    bottom: -0.05em;
+    background-color: white;
+    border-radius: 0.1rem;
+  }
+}
+
+body {
+  background-image: url("../../public/field-background.svg");
+  background-color: #8a8c8f;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  min-height: 100%;
+  margin: 0;
+  color: white;
+  overflow: hidden;
+}
+
+.noselect {
+  -webkit-touch-callout: none;
+  /* iOS Safari */
+  -webkit-user-select: none;
+  /* Safari */
+  -khtml-user-select: none;
+  /* Konqueror HTML */
+  -moz-user-select: none;
+  /* Old versions of Firefox */
+  -ms-user-select: none;
+  /* Internet Explorer/Edge */
+  user-select: none;
+  /* Non-prefixed version, currently
+                                  supported by Chrome, Edge, Opera and Firefox */
+}
+
+.app-body {
+  display: -ms-flexbox;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  -ms-flex-direction: column;
+  flex-direction: column;
+  -webkit-flex-wrap: nowrap;
+  -ms-flex-wrap: nowrap;
+  flex-wrap: nowrap;
+  -webkit-justify-content: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  -webkit-align-content: stretch;
+  -ms-flex-line-pack: stretch;
+  align-content: stretch;
+  -webkit-align-items: center;
+  -ms-flex-align: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  transition: opacity 0.2s;
+
+  .app-timer-component {
+    -webkit-order: 0;
+    -ms-flex-order: 0;
+    order: 0;
+    -webkit-flex: 0 1 auto;
+    -ms-flex: 0 1 auto;
+    flex: 0 1 auto;
+    -webkit-align-self: auto;
+    -ms-flex-item-align: auto;
+    align-self: auto;
+    height: 38vh;
+    position: relative;
+
+    .timer-display {
+      line-height: 9.5rem;
+      font-size: min(max(11.5rem, 35vh), 40vw);
+
+      > span {
+        position: relative;
+      }
+
+      .button {
+        text-align: center;
+        font-size: max(1rem, 4vh);
+        width: 10rem;
+        display: inline-block;
+        margin: 0;
+        text-align: center;
+        color: #c9c9c9;
+        position: absolute;
+        left: 0;
+        bottom: min(-0.5rem, -2vh);
+        width: 100%;
+        height: max(1rem, 4vh);
+        line-height: max(1rem, 4vh);
+        z-index: 100;
+
+        span {
+          cursor: pointer;
+
+          &:hover {
+            color: #ffffff;
+          }
+        }
+      }
+    }
+
+    .timer-info-body {
+      position: absolute;
+      top: 0.9rem;
+      right: -6.25rem;
+      width: 6.25rem;
+      font-size: min(2.5vw, 4vh);
+
+      .mode-info span {
+        cursor: pointer;
+      }
+
+      .profile-setting {
+        margin-top: 2.5rem;
+
+        *[contenteditable="true"] {
+          color: #c9c9c9;
+          outline: none;
+          word-spacing: nowrap;
+        }
+      }
+    }
+  }
+
+  .app-component {
+    -webkit-order: 0;
+    -ms-flex-order: 0;
+    order: 0;
+    -webkit-flex: 1 1 auto;
+    -ms-flex: 1 1 auto;
+    flex: 1 1 auto;
+    -webkit-align-self: auto;
+    -ms-flex-item-align: auto;
+    align-self: auto;
+    position: relative;
+    width: 100vw;
+    font-size: max(1.5vw, 4vh);
+
+    .header-body {
+      position: absolute;
+      top: 8vh;
+      width: 100vw;
+
+      p {
+        margin: 0.2rem 0 0;
+        text-align: center;
+      }
+
+      .controller-info span:hover {
+        cursor: pointer;
+      }
+    }
+
+    .footer-body {
+      position: absolute;
+      bottom: 8vh;
+      width: 100vw;
+      text-align: center;
+
+      .profile {
+        width: max(4rem, 16vh);
+        display: inline-block;
+
+        span {
+          cursor: pointer;
+          position: relative;
+        }
+      }
+
+      .indicator {
+        border: 1px solid #ffffff;
+        position: absolute;
+        width: 3rem;
+        height: 0.05rem;
+        left: 31vw;
+        transform: translateX(-50%);
+        background-color: white;
+        border-radius: 0.1rem;
+        transition: left 0.3s, width 0.3s;
+      }
+    }
+  }
+}

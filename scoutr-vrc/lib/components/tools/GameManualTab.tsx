@@ -1,47 +1,32 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
 	View,
 	Text,
 	ScrollView,
 	Pressable,
-	Image,
 	TextInput,
-	ActivityIndicator,
 	FlatList,
 	Modal,
 	StyleSheet,
-	Keyboard
+	Keyboard,
+	BackHandler,
+	Animated
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, List, X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { colors, font, radius, spacing } from '../../theme';
 import {
 	getManual,
+	spansText,
+	entrySearchText,
 	type ManualEntry,
 	type ManualSection,
 	type ManualSubsection
 } from './gameManual';
 import { ManualToC } from './ManualToC';
 import { RuleDrawer } from './RuleDrawer';
-
-const INLINE_RULE_SPLIT = /(<[A-Z]+\d+[A-Za-z]*>)/g;
-
-const renderBodyInline = (body: string, onCrossRef: (code: string) => void): React.ReactNode[] =>
-	body.split(INLINE_RULE_SPLIT).map((part, i) => {
-		const match = part.match(/^<([A-Z]+\d+[A-Za-z]*)>$/);
-		if (match) {
-			return (
-				<Text key={i} style={styles.crossRef} onPress={() => onCrossRef(match[1])}>
-					{part}
-				</Text>
-			);
-		}
-		return (
-			<Text key={i} style={styles.bodyText}>
-				{part}
-			</Text>
-		);
-	});
+import { BlocksView, InlineText } from './BlockRenderer';
+import { ImageViewerModal } from './ImageViewer';
 
 interface SearchResult {
 	entry: ManualEntry;
@@ -71,7 +56,7 @@ const searchEntries = (index: SearchResult[], query: string): SearchResult[] => 
 	return index.filter(
 		(r) =>
 			r.label.toLowerCase().includes(q) ||
-			r.entry.body.toLowerCase().includes(q) ||
+			entrySearchText(r.entry).toLowerCase().includes(q) ||
 			(r.entry.summary?.toLowerCase().includes(q) ?? false)
 	);
 };
@@ -84,22 +69,36 @@ export const GameManualTab = () => {
 		ruleMap: Record<string, ManualEntry>;
 	} | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [progress, setProgress] = useState(0);
+	const [progressLabel, setProgressLabel] = useState('Connecting...');
 	const [error, setError] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<ManualSection | null>(null);
+	const [activeSubsection, setActiveSubsection] = useState<ManualSubsection | null>(null);
 	const [tocVisible, setTocVisible] = useState(false);
 	const [searchVisible, setSearchVisible] = useState(false);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [ruleDrawerEntry, setRuleDrawerEntry] = useState<ManualEntry | null>(null);
 	const [ruleDrawerVisible, setRuleDrawerVisible] = useState(false);
+	const [imageViewer, setImageViewer] = useState<{
+		src: string;
+		alt: string;
+		caption?: string;
+	} | null>(null);
+	const [highlightEntry, setHighlightEntry] = useState<ManualEntry | null>(null);
 
 	const sectionScrollRef = useRef<ScrollView>(null);
+	const scrollInnerRef = useRef<View>(null);
 	const searchIndexRef = useRef<SearchResult[]>([]);
 
 	const load = useCallback(async () => {
 		setLoading(true);
+		setProgress(0);
 		setError(null);
 		try {
-			const data = await getManual();
+			const data = await getManual((p, label) => {
+				setProgress(p);
+				setProgressLabel(label);
+			});
 			setManual(data);
 			searchIndexRef.current = buildSearchIndex(data.sections);
 		} catch (e: any) {
@@ -108,6 +107,35 @@ export const GameManualTab = () => {
 			setLoading(false);
 		}
 	}, []);
+
+	useEffect(() => {
+		const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+			if (ruleDrawerVisible) {
+				setRuleDrawerVisible(false);
+				return true;
+			}
+			if (searchVisible) {
+				setSearchVisible(false);
+				setSearchQuery('');
+				return true;
+			}
+			if (tocVisible) {
+				setTocVisible(false);
+				return true;
+			}
+			if (activeSubsection) {
+				setActiveSubsection(null);
+				setActiveSection(activeSection);
+				return true;
+			}
+			if (activeSection) {
+				setActiveSection(null);
+				return true;
+			}
+			return false;
+		});
+		return () => handler.remove();
+	}, [ruleDrawerVisible, searchVisible, tocVisible, activeSubsection, activeSection]);
 
 	useEffect(() => {
 		load();
@@ -121,17 +149,73 @@ export const GameManualTab = () => {
 	const handleCrossRef = useCallback(
 		(code: string) => {
 			if (!manual) return;
-			const entry = manual.ruleMap[code];
+			const entry = manual.ruleMap[code.toLowerCase()];
 			if (entry) setRuleDrawerEntry(entry);
 		},
 		[manual]
 	);
 
+	const handleNavigateToSource = useCallback(
+		(entry: ManualEntry) => {
+			if (!manual) return;
+			let found: ManualEntry | null = null;
+			let targetSection: ManualSection | null = null;
+			let targetSub: ManualSubsection | null = null;
+			// First pass: identity
+			outer: for (const section of manual.sections) {
+				for (const sub of section.subsections) {
+					if (sub.entries.includes(entry)) {
+						found = entry;
+						targetSection = section;
+						targetSub = sub;
+						break outer;
+					}
+				}
+			}
+			// Second pass: string match
+			if (!found) {
+				const matchCode = entry.code?.toLowerCase();
+				const matchSourceId = entry.sourceId?.toLowerCase();
+				const matchTerm = entry.term;
+				outer2: for (const section of manual.sections) {
+					for (const sub of section.subsections) {
+						const match = sub.entries.find(
+							(e) =>
+								(matchCode && e.code?.toLowerCase() === matchCode) ||
+								(matchSourceId && e.sourceId?.toLowerCase() === matchSourceId) ||
+								(matchTerm && e.term === matchTerm)
+						);
+						if (match) {
+							found = match;
+							targetSection = section;
+							targetSub = sub;
+							break outer2;
+						}
+					}
+				}
+			}
+			setRuleDrawerVisible(false);
+			if (found && targetSection && targetSub) {
+				setActiveSection(targetSection);
+				setActiveSubsection(targetSub);
+				sectionScrollRef.current?.scrollTo({ y: 0, animated: false });
+				setHighlightEntry(found);
+			}
+		},
+		[manual]
+	);
+
 	const handleTocSelect = useCallback(
-		(sectionId: string) => {
+		(sectionId: string, subsectionId?: string) => {
 			if (!manual) return;
 			const section = manual.sections.find((s) => s.id === sectionId) ?? null;
 			setActiveSection(section);
+			if (subsectionId && section) {
+				const sub = section.subsections.find((s) => s.id === subsectionId) ?? null;
+				setActiveSubsection(sub);
+			} else {
+				setActiveSubsection(null);
+			}
 			setTocVisible(false);
 			sectionScrollRef.current?.scrollTo({ y: 0, animated: false });
 		},
@@ -140,11 +224,25 @@ export const GameManualTab = () => {
 
 	const searchResults = searchVisible ? searchEntries(searchIndexRef.current, searchQuery) : [];
 
+	const currentSubIndex =
+		activeSection && activeSubsection
+			? activeSection.subsections.findIndex((s) => s === activeSubsection)
+			: -1;
+	const prevSubsection =
+		currentSubIndex > 0 ? activeSection!.subsections[currentSubIndex - 1] : null;
+	const nextSubsection =
+		activeSection && currentSubIndex >= 0 && currentSubIndex < activeSection.subsections.length - 1
+			? activeSection.subsections[currentSubIndex + 1]
+			: null;
+
 	if (loading) {
 		return (
 			<View style={styles.centered}>
-				<ActivityIndicator size="large" color={colors.primary} />
-				<Text style={styles.loadingText}>Loading manual...</Text>
+				<Text style={styles.loadingText}>{progressLabel}</Text>
+				<View style={styles.progressBarBg}>
+					<View style={[styles.progressBarFill, { width: `${Math.round(progress * 100)}%` }]} />
+				</View>
+				<Text style={styles.progressPct}>{Math.round(progress * 100)}%</Text>
 			</View>
 		);
 	}
@@ -164,10 +262,20 @@ export const GameManualTab = () => {
 		<View style={styles.root}>
 			<View style={styles.headerRow}>
 				{activeSection ? (
-					<Pressable style={styles.backBtn} onPress={() => setActiveSection(null)} hitSlop={8}>
+					<Pressable
+						style={styles.backBtn}
+						onPress={() => {
+							if (activeSubsection) {
+								setActiveSubsection(null);
+							} else {
+								setActiveSection(null);
+							}
+						}}
+						hitSlop={8}
+					>
 						<ChevronLeft size={20} color={colors.foreground} strokeWidth={2} />
 						<Text style={styles.backText} numberOfLines={1}>
-							{activeSection.title}
+							{activeSubsection ? activeSection.title : 'Game Manual'}
 						</Text>
 					</Pressable>
 				) : (
@@ -186,7 +294,65 @@ export const GameManualTab = () => {
 				</View>
 			</View>
 
-			{activeSection ? (
+			{activeSection && activeSubsection ? (
+				<ScrollView
+					ref={sectionScrollRef}
+					style={styles.scroll}
+					contentContainerStyle={[
+						styles.scrollContent,
+						{ paddingBottom: insets.bottom + spacing['3xl'] }
+					]}
+					showsVerticalScrollIndicator={false}
+				>
+					<SubsectionDetailView
+						section={activeSection}
+						subsection={activeSubsection}
+						onCrossRef={(code) => {
+							const entry = manual.ruleMap[code.toLowerCase()];
+							if (entry) openRule(entry);
+						}}
+						onImagePress={(src, alt, caption) => setImageViewer({ src, alt, caption })}
+					/>
+					<View style={styles.subsectionNav}>
+						{prevSubsection ? (
+							<Pressable
+								style={({ pressed }) => [styles.navBtn, pressed && styles.navBtnPressed]}
+								onPress={() => {
+									setActiveSubsection(prevSubsection);
+									sectionScrollRef.current?.scrollTo({ y: 0, animated: false });
+								}}
+							>
+								<ChevronLeft size={16} color={colors.mutedForeground} strokeWidth={2} />
+								<Text style={styles.navBtnText} numberOfLines={1}>
+									{prevSubsection.title}
+								</Text>
+							</Pressable>
+						) : (
+							<View />
+						)}
+						{nextSubsection ? (
+							<Pressable
+								style={({ pressed }) => [
+									styles.navBtn,
+									styles.navBtnRight,
+									pressed && styles.navBtnPressed
+								]}
+								onPress={() => {
+									setActiveSubsection(nextSubsection);
+									sectionScrollRef.current?.scrollTo({ y: 0, animated: false });
+								}}
+							>
+								<Text style={styles.navBtnText} numberOfLines={1}>
+									{nextSubsection.title}
+								</Text>
+								<ChevronRight size={16} color={colors.mutedForeground} strokeWidth={2} />
+							</Pressable>
+						) : (
+							<View />
+						)}
+					</View>
+				</ScrollView>
+			) : activeSection ? (
 				<ScrollView
 					ref={sectionScrollRef}
 					style={styles.scroll}
@@ -198,9 +364,9 @@ export const GameManualTab = () => {
 				>
 					<SectionView
 						section={activeSection}
-						onCrossRef={(code) => {
-							const entry = manual.ruleMap[code];
-							if (entry) openRule(entry);
+						onSelectSubsection={(sub) => {
+							setActiveSubsection(sub);
+							sectionScrollRef.current?.scrollTo({ y: 0, animated: false });
 						}}
 					/>
 				</ScrollView>
@@ -229,7 +395,17 @@ export const GameManualTab = () => {
 				visible={ruleDrawerVisible}
 				onClose={() => setRuleDrawerVisible(false)}
 				onCrossRef={handleCrossRef}
+				onNavigateToSource={handleNavigateToSource}
 			/>
+
+			{imageViewer ? (
+				<ImageViewerModal
+					src={imageViewer.src}
+					alt={imageViewer.alt}
+					caption={imageViewer.caption}
+					onClose={() => setImageViewer(null)}
+				/>
+			) : null}
 
 			<Modal
 				visible={searchVisible}
@@ -290,7 +466,7 @@ export const GameManualTab = () => {
 										{item.entry.term ?? item.entry.summary ?? item.label}
 									</Text>
 									<Text style={styles.resultPreview} numberOfLines={2}>
-										{item.entry.body}
+										{spansText(item.entry.leadSpans)}
 									</Text>
 								</View>
 							</Pressable>
@@ -341,38 +517,70 @@ const HomeView = ({ sections, onSelect }: HomeViewProps) => (
 
 interface SectionViewProps {
 	section: ManualSection;
-	onCrossRef: (code: string) => void;
+	onSelectSubsection: (sub: ManualSubsection) => void;
 }
 
-const SectionView = ({ section, onCrossRef }: SectionViewProps) => (
-	<View style={styles.sectionContainer}>
-		<View style={styles.sectionHeader}>
+const SectionView = ({ section, onSelectSubsection }: SectionViewProps) => (
+	<View style={styles.homeContainer}>
+		<View style={[styles.sectionHeader, { marginBottom: spacing.md }]}>
 			<View style={styles.sectionAccent} />
 			<Text style={styles.sectionTitle}>{section.title}</Text>
 		</View>
 		{section.subsections.map((sub, si) => (
-			<SubsectionView
-				key={`${section.id}:${sub.id}:${si}`}
-				subsection={sub}
-				onCrossRef={onCrossRef}
-			/>
+			<Pressable
+				key={`${sub.id}-${si}`}
+				style={({ pressed }) => [styles.homeCard, pressed && styles.homeCardPressed]}
+				onPress={() => onSelectSubsection(sub)}
+			>
+				<View style={styles.homeCardContent}>
+					<Text style={styles.homeCardTitle}>{sub.title}</Text>
+					<Text style={styles.homeCardMeta}>
+						{sub.entries.length} {sub.entries.length === 1 ? 'entry' : 'entries'}
+					</Text>
+				</View>
+				<ChevronRight size={18} color={colors.mutedForeground} strokeWidth={2} />
+			</Pressable>
 		))}
 	</View>
 );
 
-interface SubsectionViewProps {
+interface SubsectionDetailViewProps {
+	section: ManualSection;
 	subsection: ManualSubsection;
 	onCrossRef: (code: string) => void;
+	onImagePress?: (src: string, alt: string, caption?: string) => void;
+	highlightEntry?: ManualEntry | null;
+	scrollInnerRef?: React.RefObject<View>;
+	scrollRef?: React.RefObject<ScrollView>;
+	onHighlightDone?: () => void;
 }
 
-const SubsectionView = ({ subsection, onCrossRef }: SubsectionViewProps) => (
-	<View style={styles.subsectionContainer}>
-		<Text style={styles.subsectionTitle}>{subsection.title}</Text>
+const SubsectionDetailView = ({
+	section,
+	subsection,
+	onCrossRef,
+	onImagePress,
+	highlightEntry,
+	scrollInnerRef,
+	scrollRef,
+	onHighlightDone
+}: SubsectionDetailViewProps) => (
+	<View style={styles.sectionContainer}>
+		<View style={styles.sectionHeader}>
+			<View style={styles.sectionAccent} />
+			<Text style={styles.sectionTitle}>{subsection.title}</Text>
+		</View>
+		<Text style={styles.subsectionSuperTitle}>{section.title}</Text>
 		{subsection.entries.map((entry, i) => (
 			<EntryView
 				key={`${entry.code ?? entry.term ?? ''}-${i}`}
 				entry={entry}
 				onCrossRef={onCrossRef}
+				onImagePress={onImagePress}
+				highlighted={entry === highlightEntry}
+				scrollInnerRef={scrollInnerRef}
+				scrollRef={scrollRef}
+				onHighlightDone={onHighlightDone}
 			/>
 		))}
 	</View>
@@ -381,14 +589,58 @@ const SubsectionView = ({ subsection, onCrossRef }: SubsectionViewProps) => (
 interface EntryViewProps {
 	entry: ManualEntry;
 	onCrossRef: (code: string) => void;
+	onImagePress?: (src: string, alt: string, caption?: string) => void;
+	highlighted?: boolean;
+	scrollInnerRef?: React.RefObject<View>;
+	scrollRef?: React.RefObject<ScrollView>;
+	onHighlightDone?: () => void;
 }
 
-const EntryView = ({ entry, onCrossRef }: EntryViewProps) => {
-	const hasContent = !!(entry.code ?? entry.term ?? entry.body);
-	if (!hasContent && entry.images.length === 0) return null;
+const EntryView = ({
+	entry,
+	onCrossRef,
+	onImagePress,
+	highlighted,
+	scrollInnerRef,
+	scrollRef,
+	onHighlightDone
+}: EntryViewProps) => {
+	const entryRef = useRef<View>(null);
+	const flashAnim = useRef(new Animated.Value(0)).current;
+
+	useEffect(() => {
+		if (!highlighted) return;
+		const timer = setTimeout(() => {
+			if (entryRef.current && scrollInnerRef?.current) {
+				entryRef.current.measureLayout(
+					scrollInnerRef.current,
+					(_x, y) => {
+						scrollRef?.current?.scrollTo({ y: Math.max(0, y - spacing.lg), animated: true });
+					},
+					() => {}
+				);
+			}
+			flashAnim.setValue(0);
+			Animated.sequence([
+				Animated.timing(flashAnim, { toValue: 1, duration: 250, useNativeDriver: false }),
+				Animated.delay(500),
+				Animated.timing(flashAnim, { toValue: 0, duration: 700, useNativeDriver: false })
+			]).start(() => onHighlightDone?.());
+		}, 80);
+		return () => clearTimeout(timer);
+	}, [highlighted]);
+
+	const flashBg = flashAnim.interpolate({
+		inputRange: [0, 1],
+		outputRange: ['transparent', 'rgba(244,63,94,0.18)']
+	});
+
+	const hasContent =
+		!!(entry.code ?? entry.term) || entry.leadSpans.length > 0 || entry.blocks.length > 0;
+	if (!hasContent) return null;
 
 	return (
-		<View style={styles.entryContainer}>
+		<Animated.View ref={entryRef} style={[styles.entryContainer, { backgroundColor: flashBg }]}>
 			{entry.code ? (
 				<View style={styles.ruleCodeBadge}>
 					<Text style={styles.ruleCode}>{entry.code}</Text>
@@ -399,17 +651,12 @@ const EntryView = ({ entry, onCrossRef }: EntryViewProps) => {
 
 			{entry.summary && entry.code ? <Text style={styles.summaryText}>{entry.summary}</Text> : null}
 
-			{entry.body ? (
-				<Text style={styles.entryBody}>{renderBodyInline(entry.body, onCrossRef)}</Text>
+			{entry.leadSpans.length > 0 ? (
+				<InlineText spans={entry.leadSpans} onCrossRef={onCrossRef} style={styles.entryBody} />
 			) : null}
 
-			{entry.images.map((img, i) => (
-				<View key={i} style={styles.imageContainer}>
-					<Image source={{ uri: img.src }} style={styles.image} resizeMode="contain" />
-					{img.caption ? <Text style={styles.caption}>{img.caption}</Text> : null}
-				</View>
-			))}
-		</View>
+			<BlocksView blocks={entry.blocks} onCrossRef={onCrossRef} onImagePress={onImagePress} />
+		</Animated.View>
 	);
 };
 
@@ -427,6 +674,23 @@ const styles = StyleSheet.create({
 	},
 	loadingText: {
 		fontSize: font.base,
+		color: colors.mutedForeground,
+		marginBottom: spacing.sm
+	},
+	progressBarBg: {
+		width: '80%',
+		height: 6,
+		backgroundColor: colors.muted,
+		borderRadius: radius.full,
+		overflow: 'hidden'
+	},
+	progressBarFill: {
+		height: '100%',
+		backgroundColor: colors.primary,
+		borderRadius: radius.full
+	},
+	progressPct: {
+		fontSize: font.sm,
 		color: colors.mutedForeground
 	},
 	errorText: {
@@ -568,11 +832,19 @@ const styles = StyleSheet.create({
 		marginBottom: spacing.md,
 		marginTop: spacing.sm
 	},
+	subsectionSuperTitle: {
+		fontSize: font.sm,
+		color: colors.mutedForeground,
+		paddingHorizontal: spacing['2xl'],
+		marginTop: -spacing.sm,
+		marginBottom: spacing.lg
+	},
 	entryContainer: {
 		marginBottom: spacing.lg,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.border,
-		paddingBottom: spacing.lg
+		paddingBottom: spacing.lg,
+		paddingHorizontal: spacing['2xl']
 	},
 	ruleCodeBadge: {
 		alignSelf: 'flex-start',
@@ -687,5 +959,36 @@ const styles = StyleSheet.create({
 	emptyText: {
 		fontSize: font.base,
 		color: colors.mutedForeground
+	},
+	subsectionNav: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		paddingHorizontal: spacing['2xl'],
+		paddingVertical: spacing.sm,
+		gap: spacing.lg
+	},
+	navBtn: {
+		flex: 1,
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: spacing.xs,
+		paddingVertical: spacing.xs,
+		paddingHorizontal: spacing.sm,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: radius.md,
+		backgroundColor: colors.card
+	},
+	navBtnRight: {
+		justifyContent: 'flex-end'
+	},
+	navBtnPressed: {
+		opacity: 0.6
+	},
+	navBtnText: {
+		flex: 1,
+		fontSize: font.sm,
+		color: colors.mutedForeground,
+		fontWeight: '500'
 	}
 });

@@ -38,4 +38,10 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+
+# android tracked (manual edits to AndroidManifest.xml)
+/android/build
+/android/.gradle
+/android/app/build
+/android/app/.cxx
+/android/**/*.orig
