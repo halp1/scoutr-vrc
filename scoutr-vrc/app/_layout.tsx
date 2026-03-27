@@ -11,13 +11,31 @@ import { useStorage } from '../lib/state/storage';
 import { supabase } from '../lib/supabase';
 import { fetchAllNotes } from '../lib/supabase/notes';
 import { fetchMyScoutingTeams } from '../lib/supabase/teams';
+import { clearQNACache } from '../lib/components/tools/qnaData';
 import { colors } from '../lib/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
+declare global {
+	interface Window {
+		__devhooks__: Record<string, any>;
+	}
+}
+
+if (!window.__devhooks__) {
+	window.__devhooks__ = {};
+}
+
+window.__devhooks__.clearQNACache = clearQNACache;
+
 export default function RootLayout() {
-	const { _hydrated, auth, onboarding, setAuth, setOnboarding, setAllNotes, setScoutingTeams } =
-		useStorage();
+	const _hydrated = useStorage((s) => s._hydrated);
+	const auth = useStorage((s) => s.auth);
+	const onboarding = useStorage((s) => s.onboarding);
+	const setAuth = useStorage((s) => s.setAuth);
+	const setOnboarding = useStorage((s) => s.setOnboarding);
+	const setAllNotes = useStorage((s) => s.setAllNotes);
+	const setScoutingTeams = useStorage((s) => s.setScoutingTeams);
 
 	useEffect(() => {
 		supabase.auth.getSession().then(({ data: { session } }) => {
@@ -92,7 +110,6 @@ export default function RootLayout() {
 					<Stack.Screen name="onboarding" redirect={onboardingComplete} />
 					<Stack.Screen name="auth-callback" />
 				</Stack>
-				{onboardingComplete ? <Redirect href="/(tabs)" /> : <Redirect href="/onboarding" />}
 			</SafeAreaProvider>
 		</GestureHandlerRootView>
 	);

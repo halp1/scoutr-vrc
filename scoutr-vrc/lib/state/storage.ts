@@ -21,6 +21,7 @@ export interface AppStorage {
 	};
 	notes: Record<string, string>;
 	scoutingTeams: { id: string; name: string }[];
+	qnaPrograms: string[];
 }
 
 interface AppState extends AppStorage {
@@ -39,6 +40,7 @@ interface AppState extends AppStorage {
 	setScoutingTeams: (teams: { id: string; name: string }[]) => void;
 	addScoutingTeam: (team: { id: string; name: string }) => void;
 	removeScoutingTeam: (teamId: string) => void;
+	setQnaPrograms: (programs: string[]) => void;
 }
 
 export const useStorage = create<AppState>()(
@@ -52,6 +54,7 @@ export const useStorage = create<AppState>()(
 			favorites: { teams: [], events: [] },
 			notes: {},
 			scoutingTeams: [],
+			qnaPrograms: ['v5rc', 'vurc', 'judging'],
 			_hydrated: false,
 
 			setTeam: (team) => set({ team }),
@@ -86,7 +89,8 @@ export const useStorage = create<AppState>()(
 						: [...s.scoutingTeams, team]
 				})),
 			removeScoutingTeam: (teamId) =>
-				set((s) => ({ scoutingTeams: s.scoutingTeams.filter((t) => t.id !== teamId) }))
+				set((s) => ({ scoutingTeams: s.scoutingTeams.filter((t) => t.id !== teamId) })),
+			setQnaPrograms: (programs) => set({ qnaPrograms: programs })
 		}),
 		{
 			name: 'scoutr-storage',

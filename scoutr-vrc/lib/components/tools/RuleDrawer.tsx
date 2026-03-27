@@ -21,6 +21,7 @@ interface Props {
 	visible: boolean;
 	onClose: () => void;
 	onCrossRef: (code: string) => void;
+	onQnaRef?: (id: string) => void;
 	onNavigateToSource?: (entry: ManualEntry) => void;
 }
 
@@ -28,7 +29,14 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.6;
 const DISMISS_THRESHOLD = 80;
 
-export const RuleDrawer = ({ entry, visible, onClose, onCrossRef, onNavigateToSource }: Props) => {
+export const RuleDrawer = ({
+	entry,
+	visible,
+	onClose,
+	onCrossRef,
+	onQnaRef,
+	onNavigateToSource
+}: Props) => {
 	const insets = useSafeAreaInsets();
 	const dragY = useRef(0);
 	const [imageViewer, setImageViewer] = useState<{
@@ -101,6 +109,7 @@ export const RuleDrawer = ({ entry, visible, onClose, onCrossRef, onNavigateToSo
 						<InlineText
 							spans={entry.leadSpans}
 							onCrossRef={onCrossRef}
+							onQnaRef={onQnaRef}
 							style={styles.bodyContainer}
 						/>
 					) : null}
@@ -109,6 +118,7 @@ export const RuleDrawer = ({ entry, visible, onClose, onCrossRef, onNavigateToSo
 						<BlocksView
 							blocks={entry.blocks}
 							onCrossRef={onCrossRef}
+							onQnaRef={onQnaRef}
 							onImagePress={(src, alt, caption) => setImageViewer({ src, alt, caption })}
 						/>
 					) : null}

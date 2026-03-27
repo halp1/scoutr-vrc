@@ -27,6 +27,8 @@ import { ManualToC } from './ManualToC';
 import { RuleDrawer } from './RuleDrawer';
 import { BlocksView, InlineText } from './BlockRenderer';
 import { ImageViewerModal } from './ImageViewer';
+import { QnAQuestionDetail } from './QnAQuestionDetail';
+import { syncQnaQuestions, type QnaQuestion } from './qnaData';
 
 interface SearchResult {
 	entry: ManualEntry;
@@ -84,6 +86,8 @@ export const GameManualTab = () => {
 		alt: string;
 		caption?: string;
 	} | null>(null);
+	const [qnaDetailQuestion, setQnaDetailQuestion] = useState<QnaQuestion | null>(null);
+	const [qnaDetailVisible, setQnaDetailVisible] = useState(false);
 	const [highlightEntry, setHighlightEntry] = useState<ManualEntry | null>(null);
 
 	const sectionScrollRef = useRef<ScrollView>(null);
@@ -154,6 +158,15 @@ export const GameManualTab = () => {
 		},
 		[manual]
 	);
+
+	const handleQnaRef = useCallback(async (id: string) => {
+		const result = await syncQnaQuestions();
+		const question = result.questions.find((q) => q.id === id) ?? null;
+		if (question) {
+			setQnaDetailQuestion(question);
+			setQnaDetailVisible(true);
+		}
+	}, []);
 
 	const handleNavigateToSource = useCallback(
 		(entry: ManualEntry) => {
@@ -311,6 +324,7 @@ export const GameManualTab = () => {
 							const entry = manual.ruleMap[code.toLowerCase()];
 							if (entry) openRule(entry);
 						}}
+						onQnaRef={handleQnaRef}
 						onImagePress={(src, alt, caption) => setImageViewer({ src, alt, caption })}
 					/>
 					<View style={styles.subsectionNav}>
@@ -395,6 +409,7 @@ export const GameManualTab = () => {
 				visible={ruleDrawerVisible}
 				onClose={() => setRuleDrawerVisible(false)}
 				onCrossRef={handleCrossRef}
+				onQnaRef={handleQnaRef}
 				onNavigateToSource={handleNavigateToSource}
 			/>
 
@@ -407,6 +422,11 @@ export const GameManualTab = () => {
 				/>
 			) : null}
 
+			<QnAQuestionDetail
+				question={qnaDetailQuestion}
+				visible={qnaDetailVisible}
+				onClose={() => setQnaDetailVisible(false)}
+			/>
 			<Modal
 				visible={searchVisible}
 				animationType="fade"
@@ -548,6 +568,7 @@ interface SubsectionDetailViewProps {
 	section: ManualSection;
 	subsection: ManualSubsection;
 	onCrossRef: (code: string) => void;
+	onQnaRef?: (id: string) => void;
 	onImagePress?: (src: string, alt: string, caption?: string) => void;
 	highlightEntry?: ManualEntry | null;
 	scrollInnerRef?: React.RefObject<View>;
@@ -559,6 +580,7 @@ const SubsectionDetailView = ({
 	section,
 	subsection,
 	onCrossRef,
+	onQnaRef,
 	onImagePress,
 	highlightEntry,
 	scrollInnerRef,
@@ -576,6 +598,7 @@ const SubsectionDetailView = ({
 				key={`${entry.code ?? entry.term ?? ''}-${i}`}
 				entry={entry}
 				onCrossRef={onCrossRef}
+				onQnaRef={onQnaRef}
 				onImagePress={onImagePress}
 				highlighted={entry === highlightEntry}
 				scrollInnerRef={scrollInnerRef}
@@ -589,6 +612,7 @@ const SubsectionDetailView = ({
 interface EntryViewProps {
 	entry: ManualEntry;
 	onCrossRef: (code: string) => void;
+	onQnaRef?: (id: string) => void;
 	onImagePress?: (src: string, alt: string, caption?: string) => void;
 	highlighted?: boolean;
 	scrollInnerRef?: React.RefObject<View>;
@@ -599,6 +623,7 @@ interface EntryViewProps {
 const EntryView = ({
 	entry,
 	onCrossRef,
+	onQnaRef,
 	onImagePress,
 	highlighted,
 	scrollInnerRef,
@@ -652,10 +677,20 @@ const EntryView = ({
 			{entry.summary && entry.code ? <Text style={styles.summaryText}>{entry.summary}</Text> : null}
 
 			{entry.leadSpans.length > 0 ? (
-				<InlineText spans={entry.leadSpans} onCrossRef={onCrossRef} style={styles.entryBody} />
+				<InlineText
+					spans={entry.leadSpans}
+					onCrossRef={onCrossRef}
+					onQnaRef={onQnaRef}
+					style={styles.entryBody}
+				/>
 			) : null}
 
-			<BlocksView blocks={entry.blocks} onCrossRef={onCrossRef} onImagePress={onImagePress} />
+			<BlocksView
+				blocks={entry.blocks}
+				onCrossRef={onCrossRef}
+				onQnaRef={onQnaRef}
+				onImagePress={onImagePress}
+			/>
 		</Animated.View>
 	);
 };

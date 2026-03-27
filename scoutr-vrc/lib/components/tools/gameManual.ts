@@ -4,8 +4,11 @@ import { parse, HTMLElement, TextNode } from 'node-html-parser';
 export type InlineSegment =
 	| { t: 'text'; s: string }
 	| { t: 'ref'; id: string; s: string }
+	| { t: 'qa_ref'; id: string; s: string }
 	| { t: 'bold'; s: string }
 	| { t: 'italic'; s: string };
+
+const QA_URL_RE = /\/QA\/(\d+)/;
 
 const LIST_CLASSES = [
 	'bullet',
@@ -227,6 +230,15 @@ const parseInline = (el: HTMLElement): InlineSegment[] => {
 			if (s) result.push({ t: 'ref', id, s });
 			continue;
 		}
+		if (tag === 'a') {
+			const href = node.getAttribute('href') ?? '';
+			const qaMatch = QA_URL_RE.exec(href);
+			if (qaMatch) {
+				const s = node.text.trim() || `Q&A ${qaMatch[1]}`;
+				result.push({ t: 'qa_ref', id: qaMatch[1], s });
+				continue;
+			}
+		}
 		if (tag === 'b' || tag === 'strong') {
 			const s = node.text.trim();
 			if (s) result.push({ t: 'bold', s });
@@ -286,6 +298,15 @@ const parseLeadSpans = (el: HTMLElement): InlineSegment[] => {
 			if (s) result.push({ t: 'ref', id, s });
 			continue;
 		}
+		if (tag === 'a') {
+			const href = node.getAttribute('href') ?? '';
+			const qaMatch = QA_URL_RE.exec(href);
+			if (qaMatch) {
+				const s = node.text.trim() || `Q&A ${qaMatch[1]}`;
+				result.push({ t: 'qa_ref', id: qaMatch[1], s });
+				continue;
+			}
+		}
 		if (tag === 'b' || tag === 'strong') {
 			const s = node.text.trim();
 			if (s) result.push({ t: 'bold', s });
@@ -328,6 +349,15 @@ const parseListItems = (el: HTMLElement): ListItem[] => {
 					const s = child.text.trim();
 					if (s) spans.push({ t: 'ref', id, s });
 					continue;
+				}
+				if (tag === 'a') {
+					const href = child.getAttribute('href') ?? '';
+					const qaMatch = QA_URL_RE.exec(href);
+					if (qaMatch) {
+						const s = child.text.trim() || `Q&A ${qaMatch[1]}`;
+						spans.push({ t: 'qa_ref', id: qaMatch[1], s });
+						continue;
+					}
 				}
 				if (tag === 'b' || tag === 'strong') {
 					const s = child.text.trim();
@@ -440,6 +470,13 @@ const parseChildBlocks = (el: HTMLElement): Block[] => {
 			const id = (child.getAttribute('href') ?? '').replace('#', '');
 			const s = child.text.trim();
 			if (s) pending.push({ t: 'ref', id, s });
+		} else if (tag === 'a') {
+			const href = child.getAttribute('href') ?? '';
+			const qaMatch = QA_URL_RE.exec(href);
+			if (qaMatch) {
+				const s = child.text.trim() || `Q&A ${qaMatch[1]}`;
+				pending.push({ t: 'qa_ref', id: qaMatch[1], s });
+			}
 		} else if (tag === 'b' || tag === 'strong') {
 			const s = child.text.trim();
 			if (s) pending.push({ t: 'bold', s });
@@ -659,9 +696,22 @@ export const parseManual = async (
 	return { version, sections, ruleMap };
 };
 
+let _cachedManual: ManualData | null = null;
+let _loadingPromise: Promise<ManualData> | null = null;
+
+export const isManualCached = (): boolean => _cachedManual !== null;
+
 export const getManual = async (
 	onProgress?: (progress: number, label: string) => void
 ): Promise<ManualData> => {
+	if (_cachedManual) {
+		onProgress?.(1, 'Done');
+		return _cachedManual;
+	}
+	if (!onProgress && _loadingPromise) {
+		return _loadingPromise;
+	}
+
 	let current = 0.05;
 	onProgress?.(current, 'Loading...');
 
@@ -675,17 +725,26 @@ export const getManual = async (
 		timer = setTimeout(tick, 100);
 	}
 
-	let html: string;
-	try {
-		html = await fetchManualHTML();
-	} catch (err) {
+	const run = async (): Promise<ManualData> => {
+		let html: string;
+		try {
+			html = await fetchManualHTML();
+		} catch (err) {
+			if (timer !== null) clearTimeout(timer);
+			_loadingPromise = null;
+			throw err;
+		}
+
 		if (timer !== null) clearTimeout(timer);
-		throw err;
-	}
 
-	if (timer !== null) clearTimeout(timer);
+		const data = await parseManual(html, onProgress);
+		onProgress?.(1, 'Done');
+		_cachedManual = data;
+		_loadingPromise = null;
+		return data;
+	};
 
-	const data = await parseManual(html, onProgress);
-	onProgress?.(1, 'Done');
-	return data;
+	const promise = run();
+	if (!onProgress) _loadingPromise = promise;
+	return promise;
 };

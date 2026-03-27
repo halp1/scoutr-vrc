@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../theme';
 import type { Block, InlineSegment, ListItem } from './gameManual';
 
@@ -18,12 +18,14 @@ const toRoman = (n: number): string => {
 
 interface CrossRefProps {
 	onCrossRef?: (id: string) => void;
+	onQnaRef?: (id: string) => void;
 	onImagePress?: (src: string, alt: string, caption?: string) => void;
 }
 
 export const InlineText = ({
 	spans,
 	onCrossRef,
+	onQnaRef,
 	style
 }: CrossRefProps & { spans: InlineSegment[]; style?: object }) => (
 	<Text style={style}>
@@ -31,6 +33,13 @@ export const InlineText = ({
 			if (seg.t === 'ref') {
 				return (
 					<Text key={i} style={styles.refText} onPress={() => onCrossRef?.(seg.id)}>
+						{seg.s}
+					</Text>
+				);
+			}
+			if (seg.t === 'qa_ref') {
+				return (
+					<Text key={i} style={styles.qaRefText} onPress={() => onQnaRef?.(seg.id)}>
 						{seg.s}
 					</Text>
 				);
@@ -55,30 +64,61 @@ export const InlineText = ({
 export const BlocksView = ({
 	blocks,
 	onCrossRef,
+	onQnaRef,
 	onImagePress
 }: CrossRefProps & { blocks: Block[] }) => (
 	<>
 		{blocks.map((block, i) => (
-			<BlockView key={i} block={block} onCrossRef={onCrossRef} onImagePress={onImagePress} />
+			<BlockView
+				key={i}
+				block={block}
+				onCrossRef={onCrossRef}
+				onQnaRef={onQnaRef}
+				onImagePress={onImagePress}
+			/>
 		))}
 	</>
 );
 
-const BlockView = ({ block, onCrossRef, onImagePress }: CrossRefProps & { block: Block }) => {
+const BlockView = ({
+	block,
+	onCrossRef,
+	onQnaRef,
+	onImagePress
+}: CrossRefProps & { block: Block }) => {
 	switch (block.type) {
 		case 'paragraph':
-			return <InlineText spans={block.spans} onCrossRef={onCrossRef} style={styles.paragraph} />;
+			return (
+				<InlineText
+					spans={block.spans}
+					onCrossRef={onCrossRef}
+					onQnaRef={onQnaRef}
+					style={styles.paragraph}
+				/>
+			);
 		case 'note':
 			return (
 				<View style={styles.noteContainer}>
-					<InlineText spans={block.spans} onCrossRef={onCrossRef} style={styles.noteText} />
+					<InlineText
+						spans={block.spans}
+						onCrossRef={onCrossRef}
+						onQnaRef={onQnaRef}
+						style={styles.noteText}
+					/>
 				</View>
 			);
 		case 'list':
 			return (
 				<View style={styles.listContainer}>
 					{block.items.map((item, i) => (
-						<ListItemView key={i} item={item} index={i} depth={0} onCrossRef={onCrossRef} />
+						<ListItemView
+							key={i}
+							item={item}
+							index={i}
+							depth={0}
+							onCrossRef={onCrossRef}
+							onQnaRef={onQnaRef}
+						/>
 					))}
 				</View>
 			);
@@ -103,19 +143,34 @@ const BlockView = ({ block, onCrossRef, onImagePress }: CrossRefProps & { block:
 		case 'redbox':
 			return (
 				<View style={styles.redbox}>
-					<BlocksView blocks={block.blocks} onCrossRef={onCrossRef} onImagePress={onImagePress} />
+					<BlocksView
+						blocks={block.blocks}
+						onCrossRef={onCrossRef}
+						onQnaRef={onQnaRef}
+						onImagePress={onImagePress}
+					/>
 				</View>
 			);
 		case 'greybox':
 			return (
 				<View style={styles.greybox}>
-					<BlocksView blocks={block.blocks} onCrossRef={onCrossRef} onImagePress={onImagePress} />
+					<BlocksView
+						blocks={block.blocks}
+						onCrossRef={onCrossRef}
+						onQnaRef={onQnaRef}
+						onImagePress={onImagePress}
+					/>
 				</View>
 			);
 		case 'vexubox':
 			return (
 				<View style={styles.vexubox}>
-					<BlocksView blocks={block.blocks} onCrossRef={onCrossRef} onImagePress={onImagePress} />
+					<BlocksView
+						blocks={block.blocks}
+						onCrossRef={onCrossRef}
+						onQnaRef={onQnaRef}
+						onImagePress={onImagePress}
+					/>
 				</View>
 			);
 		case 'table':
@@ -129,7 +184,8 @@ const ListItemView = ({
 	item,
 	index,
 	depth,
-	onCrossRef
+	onCrossRef,
+	onQnaRef
 }: CrossRefProps & { item: ListItem; index: number; depth: number }) => {
 	let marker: string;
 	switch (item.cls) {
@@ -159,40 +215,49 @@ const ListItemView = ({
 				<InlineText
 					spans={item.spans}
 					onCrossRef={onCrossRef}
+					onQnaRef={onQnaRef}
 					style={[styles.listItemText, item.violations && styles.violationText]}
 				/>
 			</View>
 			{item.children.map((child, i) => (
-				<ListItemView key={i} item={child} index={i} depth={depth + 1} onCrossRef={onCrossRef} />
+				<ListItemView
+					key={i}
+					item={child}
+					index={i}
+					depth={depth + 1}
+					onCrossRef={onCrossRef}
+					onQnaRef={onQnaRef}
+				/>
 			))}
 		</View>
 	);
 };
 
-const TableView = ({ headers, rows }: { headers: string[]; rows: string[][] }) => (
-	<ScrollView horizontal style={styles.tableScroll}>
-		<View>
+const TableView = ({ headers, rows }: { headers: string[]; rows: string[][] }) => {
+	const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+	return (
+		<View style={styles.tableWrap}>
 			{headers.length > 0 && (
 				<View style={styles.tableHeaderRow}>
-					{headers.map((h, i) => (
+					{Array.from({ length: colCount }, (_, i) => (
 						<View key={i} style={styles.tableCell}>
-							<Text style={styles.tableHeaderText}>{h}</Text>
+							<Text style={styles.tableHeaderText}>{headers[i] ?? ''}</Text>
 						</View>
 					))}
 				</View>
 			)}
 			{rows.map((row, ri) => (
 				<View key={ri} style={[styles.tableRow, ri % 2 === 1 && styles.tableRowAlt]}>
-					{row.map((cell, ci) => (
+					{Array.from({ length: colCount }, (_, ci) => (
 						<View key={ci} style={styles.tableCell}>
-							<Text style={styles.tableCellText}>{cell}</Text>
+							<Text style={styles.tableCellText}>{row[ci] ?? ''}</Text>
 						</View>
 					))}
 				</View>
 			))}
 		</View>
-	</ScrollView>
-);
+	);
+};
 
 const styles = StyleSheet.create({
 	paragraph: {
@@ -278,14 +343,22 @@ const styles = StyleSheet.create({
 	refText: {
 		color: colors.blue
 	},
+	qaRefText: {
+		color: colors.primary,
+		fontWeight: 'bold',
+		textDecorationLine: 'underline'
+	},
 	boldText: {
 		fontWeight: 'bold'
 	},
 	italicText: {
 		fontStyle: 'italic'
 	},
-	tableScroll: {
-		marginVertical: 8
+	tableWrap: {
+		width: '100%',
+		marginVertical: 8,
+		borderWidth: 0.5,
+		borderColor: colors.border
 	},
 	tableHeaderRow: {
 		flexDirection: 'row',
@@ -298,7 +371,7 @@ const styles = StyleSheet.create({
 		backgroundColor: 'rgba(255,255,255,0.04)'
 	},
 	tableCell: {
-		minWidth: 100,
+		flex: 1,
 		borderWidth: 0.5,
 		borderColor: colors.border,
 		padding: 6

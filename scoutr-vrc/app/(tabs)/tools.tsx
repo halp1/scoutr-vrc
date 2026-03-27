@@ -11,20 +11,22 @@ import {
 	NativeSyntheticEvent
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BookOpen, Calculator, Gamepad2 } from 'lucide-react-native';
+import { BookOpen, Calculator, MessageCircleQuestion, Gamepad2 } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { GameManualTab } from '../../lib/components/tools/GameManualTab';
+import { QnATab } from '../../lib/components/tools/QnATab';
 import { ScoringTab } from '../../lib/components/tools/ScoringTab';
 import { FieldControllerTab } from '../../lib/components/tools/FieldControllerTab';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 3;
+const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 4;
 
-const tabs = ['manual', 'scoring', 'field-controller'] as const;
+const tabs = ['manual', 'qna', 'scoring', 'field-controller'] as const;
 type ToolTab = (typeof tabs)[number];
 
 const tabMeta: { key: ToolTab; label: string; icon: typeof BookOpen }[] = [
 	{ key: 'manual', label: 'Game Manual', icon: BookOpen },
+	{ key: 'qna', label: 'Q&A', icon: MessageCircleQuestion },
 	{ key: 'scoring', label: 'Scoring', icon: Calculator },
 	{ key: 'field-controller', label: 'Field Control', icon: Gamepad2 }
 ];
@@ -36,8 +38,8 @@ export default function ToolsScreen() {
 
 	const indicatorTranslateX = useRef(
 		scrollX.interpolate({
-			inputRange: [0, SCREEN_WIDTH * 2],
-			outputRange: [0, TAB_WIDTH * 2],
+			inputRange: [0, SCREEN_WIDTH * (tabs.length - 1)],
+			outputRange: [0, TAB_WIDTH * (tabs.length - 1)],
 			extrapolate: 'clamp'
 		})
 	).current;
@@ -113,6 +115,9 @@ export default function ToolsScreen() {
 			>
 				<View style={[styles.tabPage, styles.tabPageFull]}>
 					<GameManualTab />
+				</View>
+				<View style={[styles.tabPage, styles.tabPageFill]}>
+					<QnATab />
 				</View>
 				<View style={[styles.tabPage, styles.tabPageFill]}>
 					<ScoringTab />
