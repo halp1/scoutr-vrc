@@ -90,12 +90,14 @@ export default function OnboardingScreen() {
 				if (sessionData.session) {
 					setAuth(sessionData.session);
 					setOnboarding('account', true);
+					router.replace('/(tabs)');
 				}
 			} else if (code) {
 				const { data: exchangeData } = await supabase.auth.exchangeCodeForSession(code);
 				if (exchangeData.session) {
 					setAuth(exchangeData.session);
 					setOnboarding('account', true);
+					router.replace('/(tabs)');
 				}
 			}
 		}

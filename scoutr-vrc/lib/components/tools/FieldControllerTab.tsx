@@ -231,18 +231,6 @@ export const FieldControllerTab = () => {
 		return formatVexTime(timer.displayTicks);
 	})();
 
-	if (Platform.OS !== 'android') {
-		return (
-			<View style={styles.unavailableContainer}>
-				<Cpu size={48} color={colors.mutedForeground} />
-				<Text style={styles.unavailableTitle}>Android Only</Text>
-				<Text style={styles.unavailableText}>
-					Field controller requires USB OTG and is only available on Android devices.
-				</Text>
-			</View>
-		);
-	}
-
 	return (
 		<ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
 			<View style={styles.profileBar}>
@@ -307,60 +295,77 @@ export const FieldControllerTab = () => {
 				</View>
 			)}
 
-			<View style={styles.manualModeRow}>
-				<Text style={styles.sectionLabel}>MANUAL OVERRIDE</Text>
-				<View style={styles.modeButtonsRow}>
-					{(['disabled', 'autonomous', 'driver'] as MatchMode[]).map((m) => (
-						<Pressable
-							key={m}
-							style={[styles.modeBtn, usingMatchMode === m && styles.modeBtnActive]}
-							onPress={() => {
-								resetToInit();
-								setMode(m);
-							}}
-						>
-							<Text
-								style={[styles.modeBtnLabel, usingMatchMode === m && styles.modeBtnLabelActive]}
-							>
-								{m === 'autonomous' ? 'Auto' : m === 'driver' ? 'Driver' : 'Disabled'}
-							</Text>
-						</Pressable>
-					))}
+			{Platform.OS !== 'android' ? (
+				<View style={styles.androidOnlyBanner}>
+					<Cpu size={16} color={colors.mutedForeground} />
+					<Text style={styles.androidOnlyText}>
+						Field controller (manual override & controllers) requires Android with USB OTG.
+					</Text>
 				</View>
-			</View>
-
-			<View style={styles.controllerSection}>
-				<Text style={styles.sectionLabel}>CONTROLLERS</Text>
-				{connectedDevices.length === 0 ? (
-					<View style={styles.noDevices}>
-						<WifiOff size={20} color={colors.mutedForeground} />
-						<Text style={styles.noDevicesText}>No controllers connected</Text>
-					</View>
-				) : (
-					connectedDevices.map((d) => (
-						<View key={d.deviceId} style={styles.deviceRow}>
-							<Wifi size={16} color={colors.green} />
-							<Text style={styles.deviceName}>{d.deviceName}</Text>
+			) : (
+				<>
+					<View style={styles.manualModeRow}>
+						<Text style={styles.sectionLabel}>MANUAL OVERRIDE</Text>
+						<View style={styles.modeButtonsRow}>
+							{(['disabled', 'autonomous', 'driver'] as MatchMode[]).map((m) => (
+								<Pressable
+									key={m}
+									style={[styles.modeBtn, usingMatchMode === m && styles.modeBtnActive]}
+									onPress={() => {
+										resetToInit();
+										setMode(m);
+									}}
+								>
+									<Text
+										style={[styles.modeBtnLabel, usingMatchMode === m && styles.modeBtnLabelActive]}
+									>
+										{m === 'autonomous' ? 'Auto' : m === 'driver' ? 'Driver' : 'Disabled'}
+									</Text>
+								</Pressable>
+							))}
 						</View>
-					))
-				)}
-				<View style={styles.controllerActions}>
-					<Pressable style={styles.connectBtn} onPress={connectController} disabled={connecting}>
-						{connecting ? (
-							<ActivityIndicator size="small" color={colors.primaryForeground} />
+					</View>
+
+					<View style={styles.controllerSection}>
+						<Text style={styles.sectionLabel}>CONTROLLERS</Text>
+						{connectedDevices.length === 0 ? (
+							<View style={styles.noDevices}>
+								<WifiOff size={20} color={colors.mutedForeground} />
+								<Text style={styles.noDevicesText}>No controllers connected</Text>
+							</View>
 						) : (
-							<Zap size={18} color={colors.primaryForeground} />
+							connectedDevices.map((d) => (
+								<View key={d.deviceId} style={styles.deviceRow}>
+									<Wifi size={16} color={colors.green} />
+									<Text style={styles.deviceName}>{d.deviceName}</Text>
+								</View>
+							))
 						)}
-						<Text style={styles.connectBtnLabel}>{connecting ? 'Scanning...' : 'Connect'}</Text>
-					</Pressable>
-					{connectedDevices.length > 0 && (
-						<Pressable style={styles.disconnectBtn} onPress={disconnectAll}>
-							<LogOut size={18} color={colors.foreground} />
-							<Text style={[styles.connectBtnLabel, { color: colors.foreground }]}>Disconnect</Text>
-						</Pressable>
-					)}
-				</View>
-			</View>
+						<View style={styles.controllerActions}>
+							<Pressable
+								style={styles.connectBtn}
+								onPress={connectController}
+								disabled={connecting}
+							>
+								{connecting ? (
+									<ActivityIndicator size="small" color={colors.primaryForeground} />
+								) : (
+									<Zap size={18} color={colors.primaryForeground} />
+								)}
+								<Text style={styles.connectBtnLabel}>{connecting ? 'Scanning...' : 'Connect'}</Text>
+							</Pressable>
+							{connectedDevices.length > 0 && (
+								<Pressable style={styles.disconnectBtn} onPress={disconnectAll}>
+									<LogOut size={18} color={colors.foreground} />
+									<Text style={[styles.connectBtnLabel, { color: colors.foreground }]}>
+										Disconnect
+									</Text>
+								</Pressable>
+							)}
+						</View>
+					</View>
+				</>
+			)}
 		</ScrollView>
 	);
 };
@@ -374,23 +379,20 @@ const styles = StyleSheet.create({
 		gap: spacing['2xl'],
 		paddingBottom: spacing['3xl']
 	},
-	unavailableContainer: {
-		flex: 1,
+	androidOnlyBanner: {
+		flexDirection: 'row',
 		alignItems: 'center',
-		justifyContent: 'center',
-		gap: spacing.lg,
-		padding: spacing['3xl']
+		gap: spacing.sm,
+		backgroundColor: colors.muted,
+		borderRadius: radius.md,
+		paddingHorizontal: spacing.lg,
+		paddingVertical: spacing.md
 	},
-	unavailableTitle: {
-		fontSize: font['2xl'],
-		fontWeight: '700',
-		color: colors.foreground
-	},
-	unavailableText: {
-		fontSize: font.base,
+	androidOnlyText: {
+		flex: 1,
+		fontSize: font.sm,
 		color: colors.mutedForeground,
-		textAlign: 'center',
-		lineHeight: 22
+		lineHeight: 18
 	},
 	profileBar: {
 		flexDirection: 'row',
