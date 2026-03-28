@@ -6,6 +6,8 @@ import {
 	TouchableOpacity,
 	Pressable,
 	ScrollView,
+	Modal,
+	TextInput,
 	StyleSheet,
 	ActivityIndicator,
 	RefreshControl,
@@ -13,9 +15,18 @@ import {
 	NativeScrollEvent,
 	NativeSyntheticEvent
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Clock3, Gamepad2, Info, ListOrdered, User, Users } from 'lucide-react-native';
+import {
+	ArrowLeft,
+	Clock3,
+	Gamepad2,
+	Info,
+	ListOrdered,
+	Search,
+	User,
+	Users
+} from 'lucide-react-native';
 import { colors, eventFont as font, spacing, radius } from '../../lib/theme';
 import { re, calculateOprDprCcwm, robotEventsMatchesToScoredMatches } from '../../lib/robotevents';
 import type {
@@ -296,6 +307,8 @@ export default function EventScreen() {
 	const [rawMatches, setRawMatches] = useState<MatchObj[]>([]);
 	const [infoData, setInfoData] = useState<EventInfo>(fallbackInfo);
 	const [divisionSelectorOpen, setDivisionSelectorOpen] = useState(false);
+	const [searchOpen, setSearchOpen] = useState(false);
+	const [searchQuery, setSearchQuery] = useState('');
 
 	const tabScrollRef = useRef<ScrollView>(null);
 
@@ -324,6 +337,7 @@ export default function EventScreen() {
 		return calculateOprDprCcwm(robotEventsMatchesToScoredMatches(quals, { includeUnscored: true }));
 	}, [rawMatches]);
 
+	const insets = useSafeAreaInsets();
 	const { team: myTeamNumber } = useStorage();
 
 	const teamNumberToId = useMemo(
@@ -592,6 +606,36 @@ export default function EventScreen() {
 
 	const isLoading = loadingEvent || loadingTeams || loadingRankings || loadingMatches;
 
+	const searchResults = useMemo(() => {
+		if (!searchQuery.trim()) return [];
+		const q = searchQuery.trim().toLowerCase();
+		return [...teamLookup.entries()]
+			.map(([id, t]) => ({ id, number: t.number, name: t.name }))
+			.filter((t) => t.number.toLowerCase().includes(q) || t.name.toLowerCase().includes(q))
+			.slice(0, 30);
+	}, [searchQuery, teamLookup]);
+
+	const openTeamFromSearch = (teamNumber: string, teamName: string) => {
+		setSearchOpen(false);
+		setSearchQuery('');
+		const existing = rankingRows.find(
+			(r) => r.team.trim().toLowerCase() === teamNumber.trim().toLowerCase()
+		);
+		const row: RankingRow = existing ?? {
+			rank: 0,
+			team: teamNumber,
+			name: teamName,
+			wins: 0,
+			losses: 0,
+			ties: 0,
+			wp: 0,
+			ap: 0,
+			sp: 0
+		};
+		setSelectedTeam(row);
+		setTeamDrawerOpen(true);
+	};
+
 	const selectedDivisionName =
 		divisions.find((d) => d.id === selectedDivisionId)?.name ?? 'Division';
 
@@ -607,40 +651,45 @@ export default function EventScreen() {
 				<TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
 					<ArrowLeft size={24} color={colors.foreground} />
 				</TouchableOpacity>
-				<View onLayout={(e) => setSelectorHeight(e.nativeEvent.layout.height)}>
-					<TouchableOpacity
-						style={styles.divisionSelector}
-						onPress={() => divisions.length > 1 && setDivisionSelectorOpen((v) => !v)}
-					>
-						<Users size={16} color={colors.mutedForeground} />
-						<Text style={styles.divisionText}>{selectedDivisionName}</Text>
+				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+					<TouchableOpacity style={styles.searchBtn} onPress={() => setSearchOpen(true)}>
+						<Search size={18} color={colors.mutedForeground} />
 					</TouchableOpacity>
-					{divisions.length > 1 && divisionSelectorOpen && (
-						<View style={[styles.divDropdown, { top: selectorHeight + 4 }]}>
-							{divisions.map((div) => (
-								<TouchableOpacity
-									key={div.id}
-									style={[
-										styles.divOption,
-										div.id === selectedDivisionId && styles.divOptionActive
-									]}
-									onPress={() => {
-										setSelectedDivisionId(div.id);
-										setDivisionSelectorOpen(false);
-									}}
-								>
-									<Text
+					<View onLayout={(e) => setSelectorHeight(e.nativeEvent.layout.height)}>
+						<TouchableOpacity
+							style={styles.divisionSelector}
+							onPress={() => divisions.length > 1 && setDivisionSelectorOpen((v) => !v)}
+						>
+							<Users size={16} color={colors.mutedForeground} />
+							<Text style={styles.divisionText}>{selectedDivisionName}</Text>
+						</TouchableOpacity>
+						{divisions.length > 1 && divisionSelectorOpen && (
+							<View style={[styles.divDropdown, { top: selectorHeight + 4 }]}>
+								{divisions.map((div) => (
+									<TouchableOpacity
+										key={div.id}
 										style={[
-											styles.divOptionText,
-											div.id === selectedDivisionId && styles.divOptionTextActive
+											styles.divOption,
+											div.id === selectedDivisionId && styles.divOptionActive
 										]}
+										onPress={() => {
+											setSelectedDivisionId(div.id);
+											setDivisionSelectorOpen(false);
+										}}
 									>
-										{div.name}
-									</Text>
-								</TouchableOpacity>
-							))}
-						</View>
-					)}
+										<Text
+											style={[
+												styles.divOptionText,
+												div.id === selectedDivisionId && styles.divOptionTextActive
+											]}
+										>
+											{div.name}
+										</Text>
+									</TouchableOpacity>
+								))}
+							</View>
+						)}
+					</View>
 				</View>
 			</View>
 
@@ -765,6 +814,57 @@ export default function EventScreen() {
 				</ScrollView>
 			</Animated.ScrollView>
 
+			<Modal
+				visible={searchOpen}
+				transparent
+				statusBarTranslucent
+				animationType="fade"
+				onRequestClose={() => {
+					setSearchOpen(false);
+					setSearchQuery('');
+				}}
+			>
+				<Pressable
+					style={styles.searchBackdrop}
+					onPress={() => {
+						setSearchOpen(false);
+						setSearchQuery('');
+					}}
+				/>
+				<View style={[styles.searchSheet, { paddingTop: Math.max(insets.top, 16) }]}>
+					<View style={styles.searchInputRow}>
+						<Search size={16} color={colors.mutedForeground} />
+						<TextInput
+							style={styles.searchInput}
+							value={searchQuery}
+							onChangeText={setSearchQuery}
+							placeholder="Search teams..."
+							placeholderTextColor={colors.mutedForeground}
+							autoFocus
+							autoCapitalize="characters"
+							autoCorrect={false}
+						/>
+					</View>
+					<ScrollView style={styles.searchResultsList} keyboardShouldPersistTaps="handled">
+						{searchQuery.trim().length > 0 && searchResults.length === 0 ? (
+							<Text style={styles.searchNoResults}>No teams found</Text>
+						) : (
+							searchResults.map((t) => (
+								<TouchableOpacity
+									key={t.id}
+									style={styles.searchResult}
+									onPress={() => openTeamFromSearch(t.number, t.name)}
+								>
+									<Text style={styles.searchResultNum}>{t.number}</Text>
+									<Text style={styles.searchResultName} numberOfLines={1}>
+										{t.name || 'No name'}
+									</Text>
+								</TouchableOpacity>
+							))
+						)}
+					</ScrollView>
+				</View>
+			</Modal>
 			<TeamDrawer
 				open={teamDrawerOpen}
 				onClose={closeTeamDrawer}
@@ -874,5 +974,68 @@ const styles = StyleSheet.create({
 	divOption: { paddingHorizontal: 16, paddingVertical: 12 },
 	divOptionActive: { backgroundColor: colors.primary + '20' },
 	divOptionText: { fontSize: font.base, color: colors.foreground },
-	divOptionTextActive: { color: colors.primary, fontWeight: '500' }
+	divOptionTextActive: { color: colors.primary, fontWeight: '500' },
+	searchBtn: {
+		width: 36,
+		height: 36,
+		borderRadius: radius.lg,
+		backgroundColor: colors.card,
+		borderWidth: 1,
+		borderColor: colors.border,
+		alignItems: 'center',
+		justifyContent: 'center'
+	},
+	searchBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+	searchSheet: {
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		right: 0,
+		backgroundColor: colors.card,
+		borderBottomLeftRadius: 24,
+		borderBottomRightRadius: 24,
+		padding: spacing.lg,
+		paddingTop: spacing.lg,
+		maxHeight: '70%'
+	},
+	searchInputRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		backgroundColor: colors.background,
+		borderRadius: radius.lg,
+		borderWidth: 1,
+		borderColor: colors.border,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		marginBottom: 12
+	},
+	searchInput: {
+		flex: 1,
+		fontSize: font.base,
+		color: colors.foreground
+	},
+	searchResultsList: { maxHeight: 360 },
+	searchResult: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 4,
+		gap: 10,
+		borderBottomWidth: StyleSheet.hairlineWidth,
+		borderBottomColor: colors.border
+	},
+	searchResultNum: {
+		fontSize: font.base,
+		fontWeight: '600',
+		color: colors.foreground,
+		width: 72
+	},
+	searchResultName: { flex: 1, fontSize: font.sm, color: colors.mutedForeground },
+	searchNoResults: {
+		textAlign: 'center',
+		color: colors.mutedForeground,
+		marginTop: 24,
+		fontSize: font.sm
+	}
 });

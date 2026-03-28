@@ -27,7 +27,7 @@ import { colors, font, spacing, radius } from '../../lib/theme';
 import { re } from '../../lib/robotevents';
 import type { SearchEvent, EventRegion, EventDate } from '../../lib/robotevents/events';
 import { PaginatedEventFromJSON } from '../../lib/robotevents/robotevents/models';
-import { TeamCard } from '../../lib/components/TeamCard';
+import { TeamProfileView } from '../../lib/components/TeamProfileView';
 import { useStorage } from '../../lib/state/storage';
 import { CONSTANTS } from '../../lib/const';
 
@@ -301,16 +301,15 @@ export default function ExploreScreen() {
 
 				{teams && teams.length > 0 && (
 					<View style={styles.section}>
-						<Text style={styles.sectionLabel}>Teams</Text>
 						{teams.map((team) => (
-							<View key={team.id} style={{ marginBottom: 12 }}>
-								<TeamCard id={team.id} season={season!} currentSeason={season!} />
+							<View key={team.id} style={{ marginBottom: 24 }}>
+								<TeamProfileView teamId={team.id} />
 							</View>
 						))}
 					</View>
 				)}
 
-				{events && events.length > 0 && (
+				{!(teams && teams.length > 0) && events && events.length > 0 && (
 					<View style={styles.section}>
 						<Text style={styles.sectionLabel}>Events</Text>
 						{events.map((event, i) => (

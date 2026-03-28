@@ -334,7 +334,7 @@ export const CompetitionMode = ({ event, teamId, teamNumber }: Props) => {
 				</View>
 			) : nextMatch === null ? (
 				<View style={styles.card}>
-					<Text style={styles.noMatchText}>No upcoming matches found for your team.</Text>
+					<Text style={styles.noMatchText}>No upcoming matches found.</Text>
 				</View>
 			) : (
 				<View

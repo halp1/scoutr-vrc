@@ -309,12 +309,12 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
 	return (
 		<View style={styles.card}>
 			<View style={styles.headerRow}>
-				<View style={{ flex: 1 }}>
+				<TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/team/${teamId}` as any)}>
 					<Text style={styles.teamNumber}>{team?.number ?? ''}</Text>
 					<Text style={styles.teamName}>
 						{team?.teamName ?? team?.organization ?? 'Team profile'}
 					</Text>
-				</View>
+				</TouchableOpacity>
 				<TouchableOpacity onPress={toggleFav} hitSlop={8}>
 					<Star
 						size={20}
