@@ -16,13 +16,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, List, X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { colors, font, radius, spacing } from '../../theme';
 import {
-	getManual,
 	spansText,
 	entrySearchText,
 	type ManualEntry,
 	type ManualSection,
 	type ManualSubsection
 } from './gameManual';
+import { useToolsData } from './ToolsDataContext';
 import { ManualToC } from './ManualToC';
 import { RuleDrawer } from './RuleDrawer';
 import { BlocksView, InlineText } from './BlockRenderer';
@@ -65,15 +65,14 @@ const searchEntries = (index: SearchResult[], query: string): SearchResult[] => 
 
 export const GameManualTab = () => {
 	const insets = useSafeAreaInsets();
-	const [manual, setManual] = useState<{
-		version: string;
-		sections: ManualSection[];
-		ruleMap: Record<string, ManualEntry>;
-	} | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [progress, setProgress] = useState(0);
-	const [progressLabel, setProgressLabel] = useState('Connecting...');
-	const [error, setError] = useState<string | null>(null);
+	const {
+		manual,
+		isManualLoading: loading,
+		manualProgress: progress,
+		manualProgressLabel: progressLabel,
+		manualError: error,
+		retryManual: load
+	} = useToolsData();
 	const [activeSection, setActiveSection] = useState<ManualSection | null>(null);
 	const [activeSubsection, setActiveSubsection] = useState<ManualSubsection | null>(null);
 	const [tocVisible, setTocVisible] = useState(false);
@@ -94,23 +93,9 @@ export const GameManualTab = () => {
 	const scrollInnerRef = useRef<View>(null);
 	const searchIndexRef = useRef<SearchResult[]>([]);
 
-	const load = useCallback(async () => {
-		setLoading(true);
-		setProgress(0);
-		setError(null);
-		try {
-			const data = await getManual((p, label) => {
-				setProgress(p);
-				setProgressLabel(label);
-			});
-			setManual(data);
-			searchIndexRef.current = buildSearchIndex(data.sections);
-		} catch (e: any) {
-			setError(e?.message ?? 'Failed to load game manual.');
-		} finally {
-			setLoading(false);
-		}
-	}, []);
+	useEffect(() => {
+		if (manual) searchIndexRef.current = buildSearchIndex(manual.sections);
+	}, [manual]);
 
 	useEffect(() => {
 		const handler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -140,10 +125,6 @@ export const GameManualTab = () => {
 		});
 		return () => handler.remove();
 	}, [ruleDrawerVisible, searchVisible, tocVisible, activeSubsection, activeSection]);
-
-	useEffect(() => {
-		load();
-	}, [load]);
 
 	const openRule = useCallback((entry: ManualEntry) => {
 		setRuleDrawerEntry(entry);
@@ -326,6 +307,10 @@ export const GameManualTab = () => {
 						}}
 						onQnaRef={handleQnaRef}
 						onImagePress={(src, alt, caption) => setImageViewer({ src, alt, caption })}
+						highlightEntry={highlightEntry}
+						scrollInnerRef={scrollInnerRef}
+						scrollRef={sectionScrollRef}
+						onHighlightDone={() => setHighlightEntry(null)}
 					/>
 					<View style={styles.subsectionNav}>
 						{prevSubsection ? (
@@ -571,8 +556,8 @@ interface SubsectionDetailViewProps {
 	onQnaRef?: (id: string) => void;
 	onImagePress?: (src: string, alt: string, caption?: string) => void;
 	highlightEntry?: ManualEntry | null;
-	scrollInnerRef?: React.RefObject<View>;
-	scrollRef?: React.RefObject<ScrollView>;
+	scrollInnerRef?: React.RefObject<View | null>;
+	scrollRef?: React.RefObject<ScrollView | null>;
 	onHighlightDone?: () => void;
 }
 
@@ -587,7 +572,7 @@ const SubsectionDetailView = ({
 	scrollRef,
 	onHighlightDone
 }: SubsectionDetailViewProps) => (
-	<View style={styles.sectionContainer}>
+	<View style={styles.sectionContainer} ref={scrollInnerRef}>
 		<View style={styles.sectionHeader}>
 			<View style={styles.sectionAccent} />
 			<Text style={styles.sectionTitle}>{subsection.title}</Text>
@@ -615,8 +600,8 @@ interface EntryViewProps {
 	onQnaRef?: (id: string) => void;
 	onImagePress?: (src: string, alt: string, caption?: string) => void;
 	highlighted?: boolean;
-	scrollInnerRef?: React.RefObject<View>;
-	scrollRef?: React.RefObject<ScrollView>;
+	scrollInnerRef?: React.RefObject<View | null>;
+	scrollRef?: React.RefObject<ScrollView | null>;
 	onHighlightDone?: () => void;
 }
 
@@ -647,7 +632,7 @@ const EntryView = ({
 			}
 			flashAnim.setValue(0);
 			Animated.sequence([
-				Animated.timing(flashAnim, { toValue: 1, duration: 250, useNativeDriver: false }),
+				Animated.timing(flashAnim, { toValue: 1, duration: 300, useNativeDriver: false }),
 				Animated.delay(500),
 				Animated.timing(flashAnim, { toValue: 0, duration: 700, useNativeDriver: false })
 			]).start(() => onHighlightDone?.());
@@ -657,7 +642,7 @@ const EntryView = ({
 
 	const flashBg = flashAnim.interpolate({
 		inputRange: [0, 1],
-		outputRange: ['transparent', 'rgba(244,63,94,0.18)']
+		outputRange: ['transparent', colors.primary + '30']
 	});
 
 	const hasContent =

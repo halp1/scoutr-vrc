@@ -11,20 +11,23 @@ import {
 	NativeSyntheticEvent
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BookOpen, Calculator, MessageCircleQuestion, Gamepad2 } from 'lucide-react-native';
+import { Bot, BookOpen, Calculator, MessageCircleQuestion, Gamepad2 } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
+import { ToolsDataProvider } from '../../lib/components/tools/ToolsDataContext';
+import { AiTab } from '../../lib/components/tools/AiTab';
 import { GameManualTab } from '../../lib/components/tools/GameManualTab';
 import { QnATab } from '../../lib/components/tools/QnATab';
 import { ScoringTab } from '../../lib/components/tools/ScoringTab';
 import { FieldControllerTab } from '../../lib/components/tools/FieldControllerTab';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 4;
+const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 5;
 
-const tabs = ['manual', 'qna', 'scoring', 'field-controller'] as const;
+const tabs = ['ai', 'manual', 'qna', 'scoring', 'field-controller'] as const;
 type ToolTab = (typeof tabs)[number];
 
 const tabMeta: { key: ToolTab; label: string; icon: typeof BookOpen }[] = [
+	{ key: 'ai', label: 'AI', icon: Bot },
 	{ key: 'manual', label: 'Game Manual', icon: BookOpen },
 	{ key: 'qna', label: 'Q&A', icon: MessageCircleQuestion },
 	{ key: 'scoring', label: 'Scoring', icon: Calculator },
@@ -33,8 +36,8 @@ const tabMeta: { key: ToolTab; label: string; icon: typeof BookOpen }[] = [
 
 export default function ToolsScreen() {
 	const tabScrollRef = useRef<ScrollView>(null);
-	const activeIndexRef = useRef(0);
-	const scrollX = useRef(new Animated.Value(0)).current;
+	const activeIndexRef = useRef(1);
+	const scrollX = useRef(new Animated.Value(SCREEN_WIDTH)).current;
 
 	const indicatorTranslateX = useRef(
 		scrollX.interpolate({
@@ -76,58 +79,66 @@ export default function ToolsScreen() {
 	};
 
 	return (
-		<SafeAreaView style={styles.safe} edges={['top']}>
-			<View style={styles.header}>
-				<Text style={styles.title}>Tools</Text>
-			</View>
-
-			<View style={styles.tabBar}>
-				<Animated.View
-					style={[styles.tabIndicator, { transform: [{ translateX: indicatorTranslateX }] }]}
-				/>
-				{tabMeta.map((tab, i) => {
-					const Icon = tab.icon;
-					return (
-						<Pressable key={tab.key} style={styles.tabBtn} onPress={() => goToTab(i)}>
-							<View style={styles.tabIconContainer}>
-								<Animated.View style={[styles.tabIconLayer, { opacity: tabOpacities[i].inactive }]}>
-									<Icon size={22} color={colors.mutedForeground} strokeWidth={2.25} />
-								</Animated.View>
-								<Animated.View style={[styles.tabIconLayer, { opacity: tabOpacities[i].active }]}>
-									<Icon size={22} color={colors.primary} strokeWidth={2.25} />
-								</Animated.View>
-							</View>
-						</Pressable>
-					);
-				})}
-			</View>
-
-			<Animated.ScrollView
-				ref={tabScrollRef}
-				horizontal
-				pagingEnabled
-				showsHorizontalScrollIndicator={false}
-				scrollEventThrottle={16}
-				onScroll={scrollHandler}
-				onMomentumScrollEnd={onScrollEnd}
-				style={styles.tabPages}
-				decelerationRate="fast"
-			>
-				<View style={[styles.tabPage, styles.tabPageFull]}>
-					<GameManualTab />
-				</View>
-				<View style={[styles.tabPage, styles.tabPageFill]}>
-					<QnATab />
-				</View>
-				<View style={[styles.tabPage, styles.tabPageFill]}>
-					<ScoringTab />
+		<ToolsDataProvider>
+			<SafeAreaView style={styles.safe} edges={['top']}>
+				<View style={styles.header}>
+					<Text style={styles.title}>Tools</Text>
 				</View>
 
-				<View style={[styles.tabPage, styles.tabPageFull]}>
-					<FieldControllerTab />
+				<View style={styles.tabBar}>
+					<Animated.View
+						style={[styles.tabIndicator, { transform: [{ translateX: indicatorTranslateX }] }]}
+					/>
+					{tabMeta.map((tab, i) => {
+						const Icon = tab.icon;
+						return (
+							<Pressable key={tab.key} style={styles.tabBtn} onPress={() => goToTab(i)}>
+								<View style={styles.tabIconContainer}>
+									<Animated.View
+										style={[styles.tabIconLayer, { opacity: tabOpacities[i].inactive }]}
+									>
+										<Icon size={22} color={colors.mutedForeground} strokeWidth={2.25} />
+									</Animated.View>
+									<Animated.View style={[styles.tabIconLayer, { opacity: tabOpacities[i].active }]}>
+										<Icon size={22} color={colors.primary} strokeWidth={2.25} />
+									</Animated.View>
+								</View>
+							</Pressable>
+						);
+					})}
 				</View>
-			</Animated.ScrollView>
-		</SafeAreaView>
+
+				<Animated.ScrollView
+					ref={tabScrollRef}
+					horizontal
+					pagingEnabled
+					showsHorizontalScrollIndicator={false}
+					scrollEventThrottle={16}
+					onScroll={scrollHandler}
+					onMomentumScrollEnd={onScrollEnd}
+					style={styles.tabPages}
+					decelerationRate="fast"
+					contentOffset={{ x: SCREEN_WIDTH, y: 0 }}
+				>
+					<View style={[styles.tabPage, styles.tabPageFill]}>
+						<AiTab />
+					</View>
+					<View style={[styles.tabPage, styles.tabPageFull]}>
+						<GameManualTab />
+					</View>
+					<View style={[styles.tabPage, styles.tabPageFill]}>
+						<QnATab />
+					</View>
+					<View style={[styles.tabPage, styles.tabPageFill]}>
+						<ScoringTab />
+					</View>
+
+					<View style={[styles.tabPage, styles.tabPageFull]}>
+						<FieldControllerTab />
+					</View>
+				</Animated.ScrollView>
+			</SafeAreaView>
+		</ToolsDataProvider>
 	);
 }
 

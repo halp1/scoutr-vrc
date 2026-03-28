@@ -14,13 +14,8 @@ import { Search, CircleAlert, CircleCheck, RefreshCcw } from 'lucide-react-nativ
 import { colors, font, radius, spacing } from '../../theme';
 import { useStorage } from '../../state/storage';
 import { QnAQuestionDetail } from './QnAQuestionDetail';
-import {
-	syncQnaQuestions,
-	initImageCache,
-	cacheAllImages,
-	getNetworkStatus,
-	type QnaQuestion
-} from './qnaData';
+import { type QnaQuestion } from './qnaData';
+import { useToolsData } from './ToolsDataContext';
 
 const formatDate = (value: number | null): string => {
 	if (!value) return 'Unknown date';
@@ -108,16 +103,21 @@ const QnaCard = memo(
 );
 
 export const QnATab = () => {
-	const [questions, setQuestions] = useState<QnaQuestion[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [refreshing, setRefreshing] = useState(false);
-	const [warning, setWarning] = useState<string | null>(null);
+	const {
+		questions,
+		isQnaLoading: loading,
+		isQnaRefreshing: refreshing,
+		qnaWarning: warning,
+		qnaLastSync: lastSync,
+		qnaFromCache: fromCache,
+		refreshQna,
+		imageProgress,
+		vpnPending,
+		dismissVpn,
+		confirmVpnDownload
+	} = useToolsData();
 	const [query, setQuery] = useState('');
-	const [lastSync, setLastSync] = useState<number>(0);
-	const [fromCache, setFromCache] = useState(false);
 	const [selected, setSelected] = useState<QnaQuestion | null>(null);
-	const [imageProgress, setImageProgress] = useState<{ done: number; total: number } | null>(null);
-	const [vpnPending, setVpnPending] = useState<QnaQuestion[] | null>(null);
 	const { qnaPrograms, setQnaPrograms } = useStorage();
 
 	const toggleProgram = useCallback(
@@ -128,37 +128,6 @@ export const QnATab = () => {
 		},
 		[qnaPrograms, setQnaPrograms]
 	);
-
-	const load = useCallback(async (forceRefresh = false) => {
-		if (forceRefresh) {
-			setRefreshing(true);
-			setImageProgress(null);
-		} else {
-			setLoading(true);
-		}
-		const result = await syncQnaQuestions(forceRefresh);
-		setQuestions(result.questions);
-		setWarning(result.warning);
-		setLastSync(result.lastSync);
-		setFromCache(result.fromCache);
-		setRefreshing(false);
-		setLoading(false);
-		if (result.questions.length > 0) {
-			initImageCache(result.questions);
-			const { isWifi, isVpn } = await getNetworkStatus();
-			if (isVpn) {
-				setVpnPending(result.questions);
-			} else if (isWifi) {
-				void cacheAllImages(result.questions, (done, total) => {
-					setImageProgress({ done, total });
-				});
-			}
-		}
-	}, []);
-
-	useEffect(() => {
-		void load(false);
-	}, [load]);
 
 	const filtered = useMemo(() => {
 		const normalized = query.trim().toLowerCase();
@@ -240,7 +209,7 @@ export const QnATab = () => {
 				<Text style={styles.toolbarText}>{filtered.length} results</Text>
 				<Text style={styles.toolbarText}>{syncText}</Text>
 				{fromCache && !warning ? <Text style={styles.toolbarText}>Cached</Text> : null}
-				<Pressable style={styles.refreshBtn} onPress={() => void load(true)}>
+				<Pressable style={styles.refreshBtn} onPress={refreshQna}>
 					<RefreshCcw size={14} color={colors.foreground} />
 					<Text style={styles.refreshText}>Refresh</Text>
 				</Pressable>
@@ -296,9 +265,7 @@ export const QnATab = () => {
 					<RefreshControl
 						tintColor={colors.primary}
 						refreshing={refreshing}
-						onRefresh={() => {
-							void load(true);
-						}}
+						onRefresh={refreshQna}
 					/>
 				}
 				showsVerticalScrollIndicator={false}
@@ -317,27 +284,18 @@ export const QnATab = () => {
 				onClose={() => setSelected(null)}
 			/>
 			{vpnPending ? (
-				<Modal transparent visible animationType="fade" onRequestClose={() => setVpnPending(null)}>
-					<Pressable style={styles.vpnOverlay} onPress={() => setVpnPending(null)}>
+				<Modal transparent visible animationType="fade" onRequestClose={dismissVpn}>
+					<Pressable style={styles.vpnOverlay} onPress={dismissVpn}>
 						<Pressable style={styles.vpnSheet}>
 							<Text style={styles.vpnTitle}>VPN Detected</Text>
 							<Text style={styles.vpnBody}>
 								A VPN is active. Image downloads may be slower or blocked. Download images anyway?
 							</Text>
 							<View style={styles.vpnActions}>
-								<Pressable style={styles.vpnSkip} onPress={() => setVpnPending(null)}>
+								<Pressable style={styles.vpnSkip} onPress={dismissVpn}>
 									<Text style={styles.vpnSkipText}>Skip</Text>
 								</Pressable>
-								<Pressable
-									style={styles.vpnDownload}
-									onPress={() => {
-										const qs = vpnPending;
-										setVpnPending(null);
-										void cacheAllImages(qs, (done, total) => {
-											setImageProgress({ done, total });
-										});
-									}}
-								>
+								<Pressable style={styles.vpnDownload} onPress={confirmVpnDownload}>
 									<Text style={styles.vpnDownloadText}>Download</Text>
 								</Pressable>
 							</View>

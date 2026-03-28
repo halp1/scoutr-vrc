@@ -424,10 +424,15 @@ const parseBlock = (el: HTMLElement): Block | Block[] | null => {
 		return inner.length > 0 ? inner : null;
 	}
 	if (tag === 'table') {
-		const headers = el.querySelectorAll('thead th').map((th) => th.text.trim());
+		const cleanCell = (s: string) =>
+			s
+				.replace(/\s+/g, ' ')
+				.trim()
+				.replace(/^<([A-Z]+\d+[A-Za-z]*)>$/, '$1');
+		const headers = el.querySelectorAll('thead th').map((th) => cleanCell(th.text));
 		const rows = el
 			.querySelectorAll('tbody tr')
-			.map((tr) => tr.querySelectorAll('td').map((td) => td.text.trim()));
+			.map((tr) => tr.querySelectorAll('td').map((td) => cleanCell(td.text)));
 		if (headers.length === 0 && rows.length === 0) return null;
 		return { type: 'table', headers, rows };
 	}
@@ -552,6 +557,7 @@ export const parseManual = async (
 	html: string,
 	onProgress?: (progress: number, label: string) => void
 ): Promise<ManualData> => {
+	html = html.replace(/<\?xml[^?]*\?>/g, '');
 	const doc = parse(html);
 	const version = extractVersion(html);
 	const sections: ManualSection[] = [];

@@ -174,7 +174,7 @@ const BlockView = ({
 				</View>
 			);
 		case 'table':
-			return <TableView headers={block.headers} rows={block.rows} />;
+			return <TableView headers={block.headers} rows={block.rows} onCrossRef={onCrossRef} />;
 		default:
 			return null;
 	}
@@ -233,14 +233,30 @@ const ListItemView = ({
 	);
 };
 
-const TableView = ({ headers, rows }: { headers: string[]; rows: string[][] }) => {
+const RULE_CODE_RE = /^[A-Z]{1,4}\d+[a-z]?$/;
+
+const TableView = ({
+	headers,
+	rows,
+	onCrossRef
+}: {
+	headers: string[];
+	rows: string[][];
+	onCrossRef?: (id: string) => void;
+}) => {
 	const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+	const isRuleCol = Array.from({ length: colCount }, (_, ci) => {
+		const cells = rows.map((r) => r[ci] ?? '').filter((c) => c.length > 0);
+		if (cells.length === 0) return false;
+		const matches = cells.filter((c) => RULE_CODE_RE.test(c)).length;
+		return matches >= 2 && matches / cells.length > 0.5;
+	});
 	return (
 		<View style={styles.tableWrap}>
 			{headers.length > 0 && (
 				<View style={styles.tableHeaderRow}>
 					{Array.from({ length: colCount }, (_, i) => (
-						<View key={i} style={styles.tableCell}>
+						<View key={i} style={[styles.tableCell, isRuleCol[i] && styles.tableCellNarrow]}>
 							<Text style={styles.tableHeaderText}>{headers[i] ?? ''}</Text>
 						</View>
 					))}
@@ -248,11 +264,23 @@ const TableView = ({ headers, rows }: { headers: string[]; rows: string[][] }) =
 			)}
 			{rows.map((row, ri) => (
 				<View key={ri} style={[styles.tableRow, ri % 2 === 1 && styles.tableRowAlt]}>
-					{Array.from({ length: colCount }, (_, ci) => (
-						<View key={ci} style={styles.tableCell}>
-							<Text style={styles.tableCellText}>{row[ci] ?? ''}</Text>
-						</View>
-					))}
+					{Array.from({ length: colCount }, (_, ci) => {
+						const cell = row[ci] ?? '';
+						return (
+							<View key={ci} style={[styles.tableCell, isRuleCol[ci] && styles.tableCellNarrow]}>
+								{isRuleCol[ci] && cell ? (
+									<Text
+										style={[styles.tableCellText, styles.refText]}
+										onPress={() => onCrossRef?.(cell.toLowerCase())}
+									>
+										{cell}
+									</Text>
+								) : (
+									<Text style={styles.tableCellText}>{cell}</Text>
+								)}
+							</View>
+						);
+					})}
 				</View>
 			))}
 		</View>
@@ -372,6 +400,13 @@ const styles = StyleSheet.create({
 	},
 	tableCell: {
 		flex: 1,
+		borderWidth: 0.5,
+		borderColor: colors.border,
+		padding: 6
+	},
+	tableCellNarrow: {
+		flex: 0,
+		width: 56,
 		borderWidth: 0.5,
 		borderColor: colors.border,
 		padding: 6
