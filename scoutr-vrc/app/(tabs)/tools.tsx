@@ -14,20 +14,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bot, BookOpen, Calculator, MessageCircleQuestion, Gamepad2 } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { ToolsDataProvider } from '../../lib/components/tools/ToolsDataContext';
-import { AiTab } from '../../lib/components/tools/AiTab';
 import { GameManualTab } from '../../lib/components/tools/GameManualTab';
 import { QnATab } from '../../lib/components/tools/QnATab';
 import { ScoringTab } from '../../lib/components/tools/ScoringTab';
 import { FieldControllerTab } from '../../lib/components/tools/FieldControllerTab';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 5;
+const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 4;
 
-const tabs = ['ai', 'manual', 'qna', 'scoring', 'field-controller'] as const;
+const tabs = ['manual', 'qna', 'scoring', 'field-controller'] as const;
 type ToolTab = (typeof tabs)[number];
 
 const tabMeta: { key: ToolTab; label: string; icon: typeof BookOpen }[] = [
-	{ key: 'ai', label: 'AI', icon: Bot },
 	{ key: 'manual', label: 'Game Manual', icon: BookOpen },
 	{ key: 'qna', label: 'Q&A', icon: MessageCircleQuestion },
 	{ key: 'scoring', label: 'Scoring', icon: Calculator },
@@ -36,8 +34,8 @@ const tabMeta: { key: ToolTab; label: string; icon: typeof BookOpen }[] = [
 
 export default function ToolsScreen() {
 	const tabScrollRef = useRef<ScrollView>(null);
-	const activeIndexRef = useRef(1);
-	const scrollX = useRef(new Animated.Value(SCREEN_WIDTH)).current;
+	const activeIndexRef = useRef(0);
+	const scrollX = useRef(new Animated.Value(0)).current;
 
 	const indicatorTranslateX = useRef(
 		scrollX.interpolate({
@@ -118,11 +116,8 @@ export default function ToolsScreen() {
 					onMomentumScrollEnd={onScrollEnd}
 					style={styles.tabPages}
 					decelerationRate="fast"
-					contentOffset={{ x: SCREEN_WIDTH, y: 0 }}
+					contentOffset={{ x: 0, y: 0 }}
 				>
-					<View style={[styles.tabPage, styles.tabPageFill]}>
-						<AiTab />
-					</View>
 					<View style={[styles.tabPage, styles.tabPageFull]}>
 						<GameManualTab />
 					</View>

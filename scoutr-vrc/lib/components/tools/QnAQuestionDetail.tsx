@@ -278,7 +278,7 @@ export const QnAQuestionDetail = ({ question, visible, onClose }: Props) => {
 						<View style={styles.header}>
 							<View style={[styles.programBadge, { backgroundColor: `${programBadgeColor}25` }]}>
 								<Text style={[styles.programBadgeText, { color: programBadgeColor }]}>
-									{question.program}
+									{question.program.toUpperCase()}
 								</Text>
 							</View>
 							<Pressable style={styles.iconBtn} onPress={onClose}>

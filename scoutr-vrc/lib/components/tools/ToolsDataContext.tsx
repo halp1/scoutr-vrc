@@ -1,5 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { getManual, type ManualData } from './gameManual';
+import {
+	clearManualCache,
+	getManual,
+	isManualCached,
+	isManualPersistedAsync,
+	type ManualData
+} from './gameManual';
 import {
 	cacheAllImages,
 	getNetworkStatus,
@@ -15,6 +21,9 @@ interface ToolsDataContextValue {
 	manualProgressLabel: string;
 	manualError: string | null;
 	retryManual: () => void;
+	isCellularBlocked: boolean;
+	loadManualOnCellular: () => void;
+	forceRefreshManual: () => void;
 	questions: QnaQuestion[];
 	isQnaLoading: boolean;
 	isQnaRefreshing: boolean;
@@ -42,6 +51,7 @@ export const ToolsDataProvider = ({ children }: { children: React.ReactNode }) =
 	const [manualProgress, setManualProgress] = useState(0);
 	const [manualProgressLabel, setManualProgressLabel] = useState('Connecting...');
 	const [manualError, setManualError] = useState<string | null>(null);
+	const [isCellularBlocked, setIsCellularBlocked] = useState(false);
 
 	const [questions, setQuestions] = useState<QnaQuestion[]>([]);
 	const [isQnaLoading, setIsQnaLoading] = useState(true);
@@ -54,7 +64,19 @@ export const ToolsDataProvider = ({ children }: { children: React.ReactNode }) =
 	const imageProgressRef = useRef(setImageProgress);
 	imageProgressRef.current = setImageProgress;
 
-	const loadManual = useCallback(async () => {
+	const loadManual = useCallback(async (skipNetworkCheck = false) => {
+		if (!skipNetworkCheck && !isManualCached()) {
+			const isPersisted = await isManualPersistedAsync();
+			if (!isPersisted) {
+				const { isWifi } = await getNetworkStatus();
+				if (!isWifi) {
+					setIsCellularBlocked(true);
+					setIsManualLoading(false);
+					return;
+				}
+			}
+		}
+		setIsCellularBlocked(false);
 		setIsManualLoading(true);
 		setManualProgress(0);
 		setManualError(null);
@@ -104,6 +126,12 @@ export const ToolsDataProvider = ({ children }: { children: React.ReactNode }) =
 	}, [loadManual, loadQna]);
 
 	const retryManual = useCallback(() => void loadManual(), [loadManual]);
+	const loadManualOnCellular = useCallback(() => void loadManual(true), [loadManual]);
+	const forceRefreshManual = useCallback(async () => {
+		await clearManualCache();
+		setManual(null);
+		void loadManual(true);
+	}, [loadManual]);
 	const refreshQna = useCallback(() => void loadQna(true), [loadQna]);
 
 	const dismissVpn = useCallback(() => setVpnPending(null), []);
@@ -126,6 +154,9 @@ export const ToolsDataProvider = ({ children }: { children: React.ReactNode }) =
 				manualProgressLabel,
 				manualError,
 				retryManual,
+				isCellularBlocked,
+				loadManualOnCellular,
+				forceRefreshManual,
 				questions,
 				isQnaLoading,
 				isQnaRefreshing,

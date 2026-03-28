@@ -22,7 +22,13 @@ const metricTabs: { key: MetricTab; label: string }[] = [
 	{ key: 'auton', label: 'Auton' }
 ];
 
-export const SkillsTab = ({ rows }: { rows: SkillsRow[] }) => {
+export const SkillsTab = ({
+	rows,
+	onTeamSelect
+}: {
+	rows: SkillsRow[];
+	onTeamSelect?: (teamNumber: string) => void;
+}) => {
 	const [metric, setMetric] = useState<MetricTab>('rank');
 
 	const sorted = [...rows].sort((a, b) => {
@@ -48,9 +54,11 @@ export const SkillsTab = ({ rows }: { rows: SkillsRow[] }) => {
 			</View>
 
 			{sorted.map((row, i) => (
-				<View
+				<TouchableOpacity
 					key={row.team}
 					style={[styles.skillRow, i < sorted.length - 1 && styles.skillRowBorder]}
+					onPress={() => onTeamSelect?.(row.team)}
+					activeOpacity={onTeamSelect ? 0.6 : 1}
 				>
 					<Text style={styles.rankNum}>{row.rank}</Text>
 					<View style={styles.teamInfo}>
@@ -80,7 +88,7 @@ export const SkillsTab = ({ rows }: { rows: SkillsRow[] }) => {
 							</View>
 						</View>
 					</View>
-				</View>
+				</TouchableOpacity>
 			))}
 		</View>
 	);

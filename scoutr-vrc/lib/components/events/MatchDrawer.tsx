@@ -185,15 +185,17 @@ const styles = StyleSheet.create({
 	},
 	heading: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground, marginBottom: 16 },
 	matchCard: {
-		backgroundColor: '#450a0a',
+		backgroundColor: colors.background,
 		borderRadius: radius.xl,
+		borderWidth: 1,
+		borderColor: colors.border,
 		padding: spacing.lg,
 		marginBottom: 20
 	},
 	matchName: { fontSize: font['5xl'], fontWeight: '500', color: colors.foreground, lineHeight: 56 },
-	matchStatus: { fontSize: font.sm, color: 'rgba(255,255,255,0.5)', marginBottom: 16 },
+	matchStatus: { fontSize: font.sm, color: colors.mutedForeground, marginBottom: 16 },
 	matchMeta: { flexDirection: 'row', justifyContent: 'space-between' },
-	matchMetaLabel: { fontSize: font.sm, color: 'rgba(255,255,255,0.5)' },
+	matchMetaLabel: { fontSize: font.sm, color: colors.mutedForeground },
 	matchMetaVal: { fontSize: font.sm, fontWeight: '500', color: colors.foreground },
 	allianceSection: { marginBottom: 16 },
 	allianceHeader: {

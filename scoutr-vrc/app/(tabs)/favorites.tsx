@@ -12,43 +12,39 @@ import { router } from 'expo-router';
 import { ArrowRight, Star } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../../lib/theme';
 import { re } from '../../lib/robotevents';
-import type { Event, Team } from '../../lib/robotevents/robotevents/models';
+import type { Event } from '../../lib/robotevents/robotevents/models';
 import { useStorage } from '../../lib/state/storage';
+import { FavoriteTeamEntry } from '../../lib/components/FavoriteTeamEntry';
 
 export default function FavoritesScreen() {
 	const { favorites } = useStorage();
-	const [teams, setTeams] = useState<Team[]>([]);
 	const [events, setEvents] = useState<Event[]>([]);
-	const [loading, setLoading] = useState(false);
+	const [loadingEvents, setLoadingEvents] = useState(false);
 
 	useEffect(() => {
-		if (favorites.teams.length === 0 && favorites.events.length === 0) {
-			setTeams([]);
+		if (favorites.events.length === 0) {
 			setEvents([]);
 			return;
 		}
 
 		let cancelled = false;
-		setLoading(true);
+		setLoadingEvents(true);
 
-		const load = async () => {
-			const [teamResults, eventResults] = await Promise.allSettled([
-				Promise.all(favorites.teams.map((id) => re.team.teamGetTeam({ id }))),
-				Promise.all(favorites.events.map((id) => re.events.eventGetEvent({ id })))
-			]);
+		Promise.all(favorites.events.map((id) => re.events.eventGetEvent({ id })))
+			.then((results) => {
+				if (!cancelled) {
+					setEvents(results);
+					setLoadingEvents(false);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) setLoadingEvents(false);
+			});
 
-			if (cancelled) return;
-
-			if (teamResults.status === 'fulfilled') setTeams(teamResults.value);
-			if (eventResults.status === 'fulfilled') setEvents(eventResults.value);
-			setLoading(false);
-		};
-
-		load();
 		return () => {
 			cancelled = true;
 		};
-	}, [favorites.teams.join(','), favorites.events.join(',')]);
+	}, [favorites.events.join(',')]);
 
 	const isEmpty = favorites.teams.length === 0 && favorites.events.length === 0;
 
@@ -57,9 +53,7 @@ export default function FavoritesScreen() {
 			<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
 				<Text style={styles.heading}>Favorites</Text>
 
-				{loading && <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />}
-
-				{!loading && isEmpty && (
+				{isEmpty && (
 					<View style={styles.emptyBox}>
 						<Star size={32} color={colors.mutedForeground} />
 						<Text style={styles.emptyText}>No favorites yet</Text>
@@ -67,9 +61,12 @@ export default function FavoritesScreen() {
 					</View>
 				)}
 
-				{!loading && events.length > 0 && (
+				{events.length > 0 && (
 					<View style={styles.section}>
 						<Text style={styles.sectionLabel}>Events</Text>
+						{loadingEvents && (
+							<ActivityIndicator color={colors.primary} style={{ marginBottom: 8 }} />
+						)}
 						{events.map((event) => (
 							<TouchableOpacity
 								key={event.id}
@@ -92,15 +89,14 @@ export default function FavoritesScreen() {
 					</View>
 				)}
 
-				{!loading && teams.length > 0 && (
+				{favorites.teams.length > 0 && (
 					<View style={styles.section}>
 						<Text style={styles.sectionLabel}>Teams</Text>
-						{teams.map((team) => (
-							<View key={team.id} style={[styles.card, { marginBottom: 8 }]}>
-								<Text style={styles.teamNum}>{team.number}</Text>
-								<Text style={styles.teamName}>{team.teamName ?? team.organization ?? ''}</Text>
-							</View>
-						))}
+						<View style={styles.teamsList}>
+							{favorites.teams.map((id) => (
+								<FavoriteTeamEntry key={id} teamId={id} />
+							))}
+						</View>
 					</View>
 				)}
 			</ScrollView>
@@ -137,8 +133,7 @@ const styles = StyleSheet.create({
 	cardRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 	eventName: { fontSize: font.base, fontWeight: '500', color: colors.foreground },
 	eventMeta: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
-	teamNum: { fontSize: font.xl, fontWeight: '600', color: colors.foreground },
-	teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
+	teamsList: { gap: spacing.xl },
 	emptyBox: { alignItems: 'center', marginTop: 64, gap: 8 },
 	emptyText: { fontSize: font.lg, fontWeight: '500', color: colors.foreground },
 	emptySubtext: { fontSize: font.sm, color: colors.mutedForeground, textAlign: 'center' }

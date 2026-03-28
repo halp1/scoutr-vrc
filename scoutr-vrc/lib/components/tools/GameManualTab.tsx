@@ -13,7 +13,7 @@ import {
 	Animated
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, List, X, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Search, List, X, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react-native';
 import { colors, font, radius, spacing } from '../../theme';
 import {
 	spansText,
@@ -71,7 +71,10 @@ export const GameManualTab = () => {
 		manualProgress: progress,
 		manualProgressLabel: progressLabel,
 		manualError: error,
-		retryManual: load
+		retryManual: load,
+		isCellularBlocked,
+		loadManualOnCellular,
+		forceRefreshManual
 	} = useToolsData();
 	const [activeSection, setActiveSection] = useState<ManualSection | null>(null);
 	const [activeSubsection, setActiveSubsection] = useState<ManualSubsection | null>(null);
@@ -229,6 +232,20 @@ export const GameManualTab = () => {
 			? activeSection.subsections[currentSubIndex + 1]
 			: null;
 
+	if (isCellularBlocked) {
+		return (
+			<View style={styles.centered}>
+				<Text style={styles.cellularTitle}>Game Manual Not Downloaded</Text>
+				<Text style={styles.cellularBody}>
+					The game manual hasn't been cached yet. Download it now using cellular data?
+				</Text>
+				<Pressable style={styles.retryBtn} onPress={loadManualOnCellular}>
+					<Text style={styles.retryText}>Download on Cellular</Text>
+				</Pressable>
+			</View>
+		);
+	}
+
 	if (loading) {
 		return (
 			<View style={styles.centered}>
@@ -279,6 +296,9 @@ export const GameManualTab = () => {
 					</View>
 				)}
 				<View style={styles.headerActions}>
+					<Pressable style={styles.iconBtn} onPress={forceRefreshManual} hitSlop={8}>
+						<RotateCcw size={18} color={colors.mutedForeground} strokeWidth={2} />
+					</Pressable>
 					<Pressable style={styles.iconBtn} onPress={() => setSearchVisible(true)} hitSlop={8}>
 						<Search size={20} color={colors.mutedForeground} strokeWidth={2} />
 					</Pressable>
@@ -716,6 +736,17 @@ const styles = StyleSheet.create({
 	errorText: {
 		fontSize: font.base,
 		color: colors.destructive,
+		textAlign: 'center'
+	},
+	cellularTitle: {
+		fontSize: font.md,
+		fontWeight: '600',
+		color: colors.foreground,
+		textAlign: 'center'
+	},
+	cellularBody: {
+		fontSize: font.sm,
+		color: colors.mutedForeground,
 		textAlign: 'center'
 	},
 	retryBtn: {

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { colors, eventFont as font } from '../../theme';
 
 type MatchRowData = {
@@ -12,6 +12,7 @@ type MatchRowData = {
 interface Props {
 	row: MatchRowData;
 	highlightTeam?: string | null;
+	onPress?: () => void;
 }
 
 const parseScore = (score: string): [number, number] => {
@@ -30,7 +31,7 @@ const winner = (score: string): 'red' | 'blue' | 'tie' => {
 
 const normalize = (v: string) => v.trim().toLowerCase();
 
-export const MatchRow = ({ row, highlightTeam = null }: Props) => {
+export const MatchRow = ({ row, highlightTeam = null, onPress }: Props) => {
 	const isHighlighted = (team: string) =>
 		highlightTeam !== null && normalize(team) === normalize(highlightTeam);
 
@@ -56,7 +57,7 @@ export const MatchRow = ({ row, highlightTeam = null }: Props) => {
 				: colors.foreground;
 
 	return (
-		<View style={styles.row}>
+		<Pressable style={styles.row} onPress={onPress} disabled={!onPress}>
 			<Text style={[styles.matchLabel, { color: matchColor }]}>{row.match}</Text>
 
 			<View style={styles.scoreCol}>
@@ -86,7 +87,7 @@ export const MatchRow = ({ row, highlightTeam = null }: Props) => {
 					))}
 				</View>
 			</View>
-		</View>
+		</Pressable>
 	);
 };
 

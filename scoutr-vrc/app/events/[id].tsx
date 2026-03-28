@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Clock3, Gamepad2, Info, ListOrdered, Users } from 'lucide-react-native';
+import { ArrowLeft, Clock3, Gamepad2, Info, ListOrdered, User, Users } from 'lucide-react-native';
 import { colors, eventFont as font, spacing, radius } from '../../lib/theme';
 import { re, calculateOprDprCcwm, robotEventsMatchesToScoredMatches } from '../../lib/robotevents';
 import type {
@@ -31,11 +31,13 @@ import { ScheduleTab } from '../../lib/components/events/ScheduleTab';
 import { RankingsTab } from '../../lib/components/events/RankingsTab';
 import { SkillsTab } from '../../lib/components/events/SkillsTab';
 import { InfoTab } from '../../lib/components/events/InfoTab';
+import { MyTeamTab } from '../../lib/components/events/MyTeamTab';
 import { TeamDrawer } from '../../lib/components/events/TeamDrawer';
 import { MatchDrawer } from '../../lib/components/events/MatchDrawer';
+import { useStorage } from '../../lib/state/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 4;
+const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 5;
 
 type ScheduleRow = {
 	group: 'practice' | 'qualifier' | 'elimination';
@@ -80,10 +82,11 @@ type EventInfo = {
 
 type TeamLookup = { number: string; name: string };
 
-const tabs = ['schedule', 'rankings', 'skills', 'info'] as const;
+const tabs = ['myteam', 'schedule', 'rankings', 'skills', 'info'] as const;
 type EventTab = (typeof tabs)[number];
 
 const tabMeta: { key: EventTab; icon: typeof Clock3 }[] = [
+	{ key: 'myteam', icon: User },
 	{ key: 'schedule', icon: Clock3 },
 	{ key: 'rankings', icon: ListOrdered },
 	{ key: 'skills', icon: Gamepad2 },
@@ -273,7 +276,9 @@ export default function EventScreen() {
 	const eventId = parseInt(idParam ?? '', 10);
 
 	const [loadingEvent, setLoadingEvent] = useState(false);
-	const [loadingDivision, setLoadingDivision] = useState(false);
+	const [loadingTeams, setLoadingTeams] = useState(false);
+	const [loadingRankings, setLoadingRankings] = useState(false);
+	const [loadingMatches, setLoadingMatches] = useState(false);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [refreshKey, setRefreshKey] = useState(0);
 	const [refreshing, setRefreshing] = useState(false);
@@ -287,10 +292,8 @@ export default function EventScreen() {
 	const [teamLookup, setTeamLookup] = useState<Map<number, TeamLookup>>(new Map());
 	const [allSkills, setAllSkills] = useState<Skill[]>([]);
 	const [awards, setAwards] = useState<Award[]>([]);
-	const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
-	const [rankingRows, setRankingRows] = useState<RankingRow[]>([]);
-	const [skillsRows, setSkillsRows] = useState<SkillsRow[]>([]);
-	const [divisionMatches, setDivisionMatches] = useState<MatchObj[]>([]);
+	const [rawRankings, setRawRankings] = useState<Ranking[]>([]);
+	const [rawMatches, setRawMatches] = useState<MatchObj[]>([]);
 	const [infoData, setInfoData] = useState<EventInfo>(fallbackInfo);
 	const [divisionSelectorOpen, setDivisionSelectorOpen] = useState(false);
 
@@ -304,11 +307,24 @@ export default function EventScreen() {
 	const [selectedMatch, setSelectedMatch] = useState<ScheduleRow | null>(null);
 	const [matchDrawerReturnRow, setMatchDrawerReturnRow] = useState<ScheduleRow | null>(null);
 
+	const rankingRows = useMemo(
+		() => mapRankings(rawRankings, teamLookup),
+		[rawRankings, teamLookup]
+	);
+	const scheduleRows = useMemo(() => mapMatches(rawMatches), [rawMatches]);
+	const skillsRows = useMemo(() => {
+		if (selectedDivisionId === null || allSkills.length === 0) return [];
+		const filtered = allSkills.filter((s) => s.division?.id === selectedDivisionId);
+		return mapSkills(filtered.length > 0 ? filtered : allSkills, teamLookup);
+	}, [allSkills, selectedDivisionId, teamLookup]);
+
 	const divisionRatings = useMemo(() => {
-		const quals = divisionMatches.filter((m) => m.round === 2);
+		const quals = rawMatches.filter((m) => m.round === 2);
 		if (quals.length === 0) return null;
 		return calculateOprDprCcwm(robotEventsMatchesToScoredMatches(quals, { includeUnscored: true }));
-	}, [divisionMatches]);
+	}, [rawMatches]);
+
+	const { team: myTeamNumber } = useStorage();
 
 	const teamNumberToId = useMemo(
 		() =>
@@ -317,6 +333,18 @@ export default function EventScreen() {
 			),
 		[teamLookup]
 	);
+
+	const isMyTeamRegistered = useMemo(
+		() => !!myTeamNumber && teamLookup.size > 0 && teamNumberToId.has(myTeamNumber.toLowerCase()),
+		[myTeamNumber, teamLookup, teamNumberToId]
+	);
+
+	const activeTabMeta = useMemo(
+		() => (isMyTeamRegistered ? tabMeta : tabMeta.filter((t) => t.key !== 'myteam')),
+		[isMyTeamRegistered]
+	);
+
+	const activeTabWidth = (SCREEN_WIDTH - spacing.md * 2) / activeTabMeta.length;
 
 	const selectedTeamKey = useMemo(
 		() => (selectedTeam ? selectedTeam.team.trim().toLowerCase() : null),
@@ -367,50 +395,58 @@ export default function EventScreen() {
 
 		let cancelled = false;
 		setLoadingEvent(true);
+		setLoadingTeams(true);
 		setLoadError(null);
 
-		(async () => {
-			try {
-				const [event, teams, skills, eventAwards] = await Promise.all([
-					re.events.eventGetEvent({ id: eventId }),
-					re.depaginate(
-						re.events.eventGetTeams({ id: eventId }, re.custom.maxPages),
-						re.models.PaginatedTeamFromJSON
-					),
-					re.depaginate(
-						re.events.eventGetSkills({ id: eventId }, re.custom.maxPages),
-						re.models.PaginatedSkillFromJSON
-					),
-					re
-						.depaginate(
-							re.events.eventGetAwards({ id: eventId }, re.custom.maxPages),
-							re.models.PaginatedAwardFromJSON
-						)
-						.catch(() => [] as Award[])
-				]);
+		re.depaginate(
+			re.events.eventGetTeams({ id: eventId }, re.custom.maxPages),
+			re.models.PaginatedTeamFromJSON
+		)
+			.then((teams) => {
+				if (!cancelled) setTeamLookup(buildTeamLookup(teams));
+			})
+			.catch(() => {})
+			.finally(() => {
+				if (!cancelled) setLoadingTeams(false);
+			});
 
+		re.depaginate(
+			re.events.eventGetAwards({ id: eventId }, re.custom.maxPages),
+			re.models.PaginatedAwardFromJSON
+		)
+			.then((eventAwards) => {
+				if (!cancelled) setAwards(eventAwards);
+			})
+			.catch(() => {});
+
+		re.depaginate(
+			re.events.eventGetSkills({ id: eventId }, re.custom.maxPages),
+			re.models.PaginatedSkillFromJSON
+		)
+			.then((skills) => {
+				if (!cancelled) setAllSkills(skills);
+			})
+			.catch(() => {});
+
+		re.events
+			.eventGetEvent({ id: eventId })
+			.then((event) => {
 				if (cancelled) return;
-
 				const sortedDivs = [...(event.divisions ?? [])].sort(
 					(a, b) => (a.order ?? 0) - (b.order ?? 0)
 				) as (Division & { id: number })[];
-
 				setEventMeta(event);
 				setEventSku((event as any).sku ?? '');
 				setDivisions(sortedDivs);
-				setTeamLookup(buildTeamLookup(teams));
-				setAllSkills(skills);
-				setAwards(eventAwards);
 				setInfoData(buildInfoData(event, sortedDivs[0]?.name ?? 'Division'));
-
-				const firstDiv = sortedDivs[0];
-				if (firstDiv) setSelectedDivisionId(firstDiv.id);
-			} catch (e) {
+				if (sortedDivs[0]) setSelectedDivisionId(sortedDivs[0].id);
+			})
+			.catch((e) => {
 				if (!cancelled) setLoadError((e as Error).message || 'Unable to load event data.');
-			} finally {
+			})
+			.finally(() => {
 				if (!cancelled) setLoadingEvent(false);
-			}
-		})();
+			});
 
 		return () => {
 			cancelled = true;
@@ -418,51 +454,55 @@ export default function EventScreen() {
 	}, [eventId, refreshKey]);
 
 	useEffect(() => {
-		if (!eventMeta || selectedDivisionId === null) return;
+		if (selectedDivisionId === null) return;
 
-		const divName = divisions.find((d) => d.id === selectedDivisionId)?.name ?? 'Division';
-		setInfoData(buildInfoData(eventMeta, divName));
-
-		const filtered = allSkills.filter((s) => s.division?.id === selectedDivisionId);
-		setSkillsRows(mapSkills(filtered.length > 0 ? filtered : allSkills, teamLookup));
+		if (eventMeta) {
+			const divName = divisions.find((d) => d.id === selectedDivisionId)?.name ?? 'Division';
+			setInfoData(buildInfoData(eventMeta, divName));
+		}
 
 		let cancelled = false;
-		setLoadingDivision(true);
+		setLoadingRankings(true);
+		setLoadingMatches(true);
 
-		(async () => {
-			try {
-				const [rankings, matches] = await Promise.all([
-					re.depaginate(
-						re.events.eventGetDivisionRankings(
-							{ id: eventId, div: selectedDivisionId },
-							re.custom.maxPages
-						),
-						re.models.PaginatedRankingFromJSON
-					),
-					re.depaginate(
-						re.events.eventGetDivisionMatches(
-							{ id: eventId, div: selectedDivisionId },
-							re.custom.maxPages
-						),
-						re.models.PaginatedMatchFromJSON
-					)
-				]);
+		re.depaginate(
+			re.events.eventGetDivisionRankings(
+				{ id: eventId, div: selectedDivisionId },
+				re.custom.maxPages
+			),
+			re.models.PaginatedRankingFromJSON
+		)
+			.then((rankings) => {
+				if (!cancelled) setRawRankings(rankings);
+			})
+			.catch((e) => {
+				if (!cancelled) setLoadError((e as Error).message || 'Unable to load rankings.');
+			})
+			.finally(() => {
+				if (!cancelled) setLoadingRankings(false);
+			});
 
-				if (cancelled) return;
-				setRankingRows(mapRankings(rankings, teamLookup));
-				setScheduleRows(mapMatches(matches));
-				setDivisionMatches(matches);
-			} catch (e) {
-				if (!cancelled) setLoadError((e as Error).message || 'Unable to load division data.');
-			} finally {
-				if (!cancelled) setLoadingDivision(false);
-			}
-		})();
+		re.depaginate(
+			re.events.eventGetDivisionMatches(
+				{ id: eventId, div: selectedDivisionId },
+				re.custom.maxPages
+			),
+			re.models.PaginatedMatchFromJSON
+		)
+			.then((matches) => {
+				if (!cancelled) setRawMatches(matches);
+			})
+			.catch((e) => {
+				if (!cancelled) setLoadError((e as Error).message || 'Unable to load matches.');
+			})
+			.finally(() => {
+				if (!cancelled) setLoadingMatches(false);
+			});
 
 		return () => {
 			cancelled = true;
 		};
-	}, [eventId, selectedDivisionId, eventMeta, refreshKey]);
+	}, [eventId, selectedDivisionId, refreshKey]);
 
 	const onRefresh = useCallback(() => {
 		setRefreshing(true);
@@ -471,33 +511,38 @@ export default function EventScreen() {
 	}, []);
 
 	useEffect(() => {
-		if (!loadingEvent && !loadingDivision && refreshing) setRefreshing(false);
-	}, [loadingEvent, loadingDivision, refreshing]);
+		if (!loadingEvent && !loadingTeams && !loadingRankings && !loadingMatches && refreshing)
+			setRefreshing(false);
+	}, [loadingEvent, loadingTeams, loadingRankings, loadingMatches, refreshing]);
 
 	const activeIndexRef = useRef(0);
 	const scrollX = useRef(new Animated.Value(0)).current;
-	const indicatorTranslateX = useRef(
-		scrollX.interpolate({
-			inputRange: [0, SCREEN_WIDTH * 3],
-			outputRange: [0, TAB_WIDTH * 3],
-			extrapolate: 'clamp'
-		})
-	).current;
-
-	const tabOpacities = useRef(
-		tabMeta.map((_, i) => ({
-			active: scrollX.interpolate({
-				inputRange: [(i - 0.5) * SCREEN_WIDTH, i * SCREEN_WIDTH, (i + 0.5) * SCREEN_WIDTH],
-				outputRange: [0, 1, 0],
+	const indicatorTranslateX = useMemo(
+		() =>
+			scrollX.interpolate({
+				inputRange: [0, SCREEN_WIDTH * (activeTabMeta.length - 1)],
+				outputRange: [0, activeTabWidth * (activeTabMeta.length - 1)],
 				extrapolate: 'clamp'
 			}),
-			inactive: scrollX.interpolate({
-				inputRange: [(i - 0.5) * SCREEN_WIDTH, i * SCREEN_WIDTH, (i + 0.5) * SCREEN_WIDTH],
-				outputRange: [1, 0, 1],
-				extrapolate: 'clamp'
-			})
-		}))
-	).current;
+		[activeTabMeta.length, activeTabWidth]
+	);
+
+	const tabOpacities = useMemo(
+		() =>
+			activeTabMeta.map((_, i) => ({
+				active: scrollX.interpolate({
+					inputRange: [(i - 0.5) * SCREEN_WIDTH, i * SCREEN_WIDTH, (i + 0.5) * SCREEN_WIDTH],
+					outputRange: [0, 1, 0],
+					extrapolate: 'clamp'
+				}),
+				inactive: scrollX.interpolate({
+					inputRange: [(i - 0.5) * SCREEN_WIDTH, i * SCREEN_WIDTH, (i + 0.5) * SCREEN_WIDTH],
+					outputRange: [1, 0, 1],
+					extrapolate: 'clamp'
+				})
+			})),
+		[activeTabMeta]
+	);
 
 	const scrollHandler = useRef(
 		Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
@@ -545,7 +590,7 @@ export default function EventScreen() {
 		setMatchDrawerOpen(true);
 	};
 
-	const isLoading = loadingEvent || loadingDivision;
+	const isLoading = loadingEvent || loadingTeams || loadingRankings || loadingMatches;
 
 	const selectedDivisionName =
 		divisions.find((d) => d.id === selectedDivisionId)?.name ?? 'Division';
@@ -607,9 +652,12 @@ export default function EventScreen() {
 
 			<View style={styles.tabBar}>
 				<Animated.View
-					style={[styles.tabIndicator, { transform: [{ translateX: indicatorTranslateX }] }]}
+					style={[
+						styles.tabIndicator,
+						{ width: activeTabWidth, transform: [{ translateX: indicatorTranslateX }] }
+					]}
 				/>
-				{tabMeta.map((tab, i) => {
+				{activeTabMeta.map((tab, i) => {
 					const Icon = tab.icon;
 					return (
 						<Pressable key={tab.key} style={styles.tabBtn} onPress={() => goToTab(i)}>
@@ -643,6 +691,25 @@ export default function EventScreen() {
 				style={styles.tabPages}
 				decelerationRate="fast"
 			>
+				{isMyTeamRegistered && (
+					<ScrollView
+						style={styles.tabPage}
+						contentContainerStyle={styles.tabContent}
+						refreshControl={
+							<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="transparent" />
+						}
+					>
+						<MyTeamTab
+							rankingRows={rankingRows}
+							scheduleRows={scheduleRows}
+							skillsRows={skillsRows}
+							divisionRatings={divisionRatings}
+							teamNumberToId={teamNumberToId}
+							loading={loadingEvent || loadingTeams || loadingRankings || loadingMatches}
+							onMatchPress={openMatchDrawer}
+						/>
+					</ScrollView>
+				)}
 				<ScrollView
 					style={styles.tabPage}
 					contentContainerStyle={styles.tabContent}
@@ -668,7 +735,15 @@ export default function EventScreen() {
 						<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="transparent" />
 					}
 				>
-					<SkillsTab rows={skillsRows} />
+					<SkillsTab
+						rows={skillsRows}
+						onTeamSelect={(teamNumber) => {
+							const row = rankingRows.find(
+								(r) => r.team.trim().toLowerCase() === teamNumber.trim().toLowerCase()
+							);
+							if (row) openTeamDrawer(row);
+						}}
+					/>
 				</ScrollView>
 				<ScrollView
 					style={styles.tabPage}
@@ -699,6 +774,10 @@ export default function EventScreen() {
 				opr={selectedTeamRatings.opr}
 				dpr={selectedTeamRatings.dpr}
 				ccwm={selectedTeamRatings.ccwm}
+				onMatchPress={(match) => {
+					const row = scheduleRows.find((r) => r.match === match.match);
+					if (row) openMatchDrawer(row);
+				}}
 			/>
 			<MatchDrawer
 				open={matchDrawerOpen}

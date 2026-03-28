@@ -707,6 +707,26 @@ let _loadingPromise: Promise<ManualData> | null = null;
 
 export const isManualCached = (): boolean => _cachedManual !== null;
 
+export const isManualPersistedAsync = async (): Promise<boolean> => {
+	try {
+		const v = await AsyncStorage.getItem(CACHE_VERSION_KEY);
+		return v !== null;
+	} catch {
+		return false;
+	}
+};
+
+export const clearManualCache = async (): Promise<void> => {
+	_cachedManual = null;
+	_loadingPromise = null;
+	try {
+		await Promise.all([
+			AsyncStorage.removeItem(CACHE_VERSION_KEY),
+			AsyncStorage.removeItem(CACHE_DATA_KEY)
+		]);
+	} catch {}
+};
+
 export const getManual = async (
 	onProgress?: (progress: number, label: string) => void
 ): Promise<ManualData> => {
@@ -732,6 +752,21 @@ export const getManual = async (
 	}
 
 	const run = async (): Promise<ManualData> => {
+		try {
+			const [cachedVersion, cachedRaw] = await Promise.all([
+				AsyncStorage.getItem(CACHE_VERSION_KEY),
+				AsyncStorage.getItem(CACHE_DATA_KEY)
+			]);
+			if (cachedVersion && cachedRaw) {
+				const parsed = JSON.parse(cachedRaw) as ManualData;
+				if (timer !== null) clearTimeout(timer);
+				onProgress?.(1, 'Done');
+				_cachedManual = parsed;
+				_loadingPromise = null;
+				return parsed;
+			}
+		} catch {}
+
 		let html: string;
 		try {
 			html = await fetchManualHTML();
@@ -747,6 +782,10 @@ export const getManual = async (
 		onProgress?.(1, 'Done');
 		_cachedManual = data;
 		_loadingPromise = null;
+
+		AsyncStorage.setItem(CACHE_VERSION_KEY, data.version).catch(() => {});
+		AsyncStorage.setItem(CACHE_DATA_KEY, JSON.stringify(data)).catch(() => {});
+
 		return data;
 	};
 

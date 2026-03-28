@@ -16,6 +16,7 @@ import type { Event, Team } from '../../lib/robotevents/robotevents/models';
 import { useStorage } from '../../lib/state/storage';
 import { getVDAStatsByTeamNum } from '../../lib/data/vda';
 import type { VDAStats } from '../../lib/data/vda';
+import { CompetitionMode } from '../../lib/components/CompetitionMode';
 
 type MatchStats = { winRate: number; wins: number; losses: number; ties: number };
 type SkillsStats = { rank: number | null; score: number | null };
@@ -46,6 +47,8 @@ export default function HomeScreen() {
 	const [vdaStats, setVdaStats] = useState<VDAStats | null>(null);
 	const [awardsCount, setAwardsCount] = useState<number | null>(null);
 	const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+	const [pastEvents, setPastEvents] = useState<Event[]>([]);
+	const [activeCompetition, setActiveCompetition] = useState<Event | null>(null);
 
 	const [error, setError] = useState<string | null>(null);
 	const [vdaError, setVdaError] = useState<string | null>(null);
@@ -57,6 +60,7 @@ export default function HomeScreen() {
 			if (!teamNumber) {
 				setTeam(null);
 				setUpcomingEvents([]);
+				setPastEvents([]);
 				setMatchStats(null);
 				setSkillsStats(null);
 				setVdaStats(null);
@@ -123,25 +127,43 @@ export default function HomeScreen() {
 						const events = await re.depaginate(
 							re.team.teamGetEvents({
 								id: targetTeam.id,
-								season: [season.id!],
-								start: new Date()
+								season: [season.id!]
 							}),
 							re.models.PaginatedEventFromJSON
 						);
 						if (cancelled) return;
 						const now = new Date();
 						now.setHours(0, 0, 0, 0);
+						const active =
+							events.find((e) => {
+								const start = e.start;
+								const end = e.end ?? e.start;
+								return start != null && end != null && start <= now && end >= now;
+							}) ?? null;
 						const sorted = events
 							.filter((e) => {
 								const d = e.start ?? e.end;
-								return d ? d >= now : false;
+								return d ? d > now : false;
 							})
 							.sort(
 								(a, b) =>
 									((a.start ?? a.end)?.getTime() ?? Infinity) -
 									((b.start ?? b.end)?.getTime() ?? Infinity)
 							);
-						if (!cancelled) setUpcomingEvents(sorted);
+						const past = events
+							.filter((e) => {
+								const end = e.end ?? e.start;
+								return end ? end < now : false;
+							})
+							.sort(
+								(a, b) =>
+									((b.end ?? b.start)?.getTime() ?? 0) - ((a.end ?? a.start)?.getTime() ?? 0)
+							);
+						if (!cancelled) {
+							setActiveCompetition(active);
+							setUpcomingEvents(sorted);
+							setPastEvents(past);
+						}
 					} catch (e) {
 						if (!cancelled) setError((e as Error).message);
 					} finally {
@@ -246,11 +268,13 @@ export default function HomeScreen() {
 	return (
 		<SafeAreaView style={styles.safe} edges={['top']}>
 			<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-				<Section label="Upcoming Competition">
+				<Section label={activeCompetition && team ? 'Competition Mode' : 'Upcoming Competition'}>
 					{loadingEvents ? (
 						<Card>
 							<ActivityIndicator color={colors.primary} />
 						</Card>
+					) : activeCompetition && team ? (
+						<CompetitionMode event={activeCompetition} teamId={team.id} teamNumber={team.number} />
 					) : featuredEvent ? (
 						<TouchableOpacity
 							style={[styles.card, styles.cardPrimary]}
@@ -405,6 +429,28 @@ export default function HomeScreen() {
 					</Section>
 				)}
 
+				{pastEvents.length > 0 && (
+					<Section label="Past Competitions">
+						{pastEvents.map((event) => (
+							<TouchableOpacity
+								key={event.id}
+								style={[styles.card, { marginBottom: 8 }]}
+								onPress={() => router.push(`/events/${event.id}`)}
+							>
+								<View style={styles.cardRow}>
+									<View style={{ flex: 1 }}>
+										<Text style={styles.eventNameSm} numberOfLines={2}>
+											{event.name}
+										</Text>
+										<Text style={styles.eventDate}>{formatEventDate(event)}</Text>
+									</View>
+									<ArrowRight size={16} color={colors.mutedForeground} />
+								</View>
+							</TouchableOpacity>
+						))}
+					</Section>
+				)}
+
 				{(error || vdaError) && (
 					<View style={styles.errorBox}>
 						{error && <Text style={styles.errorText}>{error}</Text>}
@@ -463,7 +509,7 @@ const styles = StyleSheet.create({
 		marginBottom: 2
 	},
 	eventLocation: { fontSize: font.md, color: colors.foreground, marginTop: 4 },
-	eventDate: { fontSize: font.md, color: colors.mutedForeground, marginTop: 2 },
+	eventDate: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
 	teamNumber: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground },
 	teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2, marginBottom: 12 },
 	statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

@@ -20,7 +20,10 @@ import {
 } from 'react-native-executorch';
 import { ExpoResourceFetcher } from 'react-native-executorch-expo-resource-fetcher';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Bot, Send, Square, BrainCircuit, ImageIcon, RotateCcw } from 'lucide-react-native';
+import { Bot, Send, Square, BrainCircuit, ImageIcon, RotateCcw, Trash2 } from 'lucide-react-native';
+import { documentDirectory } from 'expo-file-system/legacy';
+import { Directory } from 'expo-file-system';
+import { ConfirmSheet } from '../ConfirmSheet';
 import { colors, font, spacing, radius } from '../../theme';
 import { useToolsData } from './ToolsDataContext';
 import { useKnowledgeBase, type KnowledgeChunk } from './useKnowledgeBase';
@@ -152,6 +155,19 @@ export const AiTab = () => {
 	const [ruleDrawerVisible, setRuleDrawerVisible] = useState(false);
 	const [qnaDetailQuestion, setQnaDetailQuestion] = useState<QnaQuestion | null>(null);
 	const [qnaDetailVisible, setQnaDetailVisible] = useState(false);
+	const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+
+	const deleteModels = useCallback(async () => {
+		setDeleteConfirmVisible(false);
+		try {
+			const dir = new Directory(`${documentDirectory}react-native-executorch/`);
+			if (dir.exists) {
+				await dir.delete();
+			}
+		} catch {}
+		setModelEnabled(false);
+		await AsyncStorage.removeItem('ai-model-enabled');
+	}, []);
 
 	const ruleMap = useMemo(() => manual?.ruleMap ?? {}, [manual]);
 	const qnaMap = useMemo(() => Object.fromEntries(questions.map((q) => [q.id, q])), [questions]);
@@ -312,6 +328,7 @@ export const AiTab = () => {
 		return (
 			<View style={styles.centerState}>
 				<Text style={styles.stateTitle}>Downloading models…</Text>
+				<Text style={styles.doNotLeave}>Do not exit the app</Text>
 				<View style={styles.progressContainer}>
 					<ProgressBar progress={llmProg} label="Llama 3.2 1B" />
 					<ProgressBar progress={embProg} label="Embedding model" />
@@ -319,6 +336,15 @@ export const AiTab = () => {
 				{(llm.error ?? textEmbeddings.error) ? (
 					<Text style={styles.errorText}>{String(llm.error ?? textEmbeddings.error)}</Text>
 				) : null}
+				<ConfirmSheet
+					visible={deleteConfirmVisible}
+					title="Delete Models"
+					body="This will delete all downloaded model files and free up storage. You can re-download them later."
+					confirmLabel="Delete"
+					destructive
+					onCancel={() => setDeleteConfirmVisible(false)}
+					onConfirm={deleteModels}
+				/>
 			</View>
 		);
 	}
@@ -339,13 +365,28 @@ export const AiTab = () => {
 		<KeyboardAvoidingView style={styles.chatRoot} behavior="padding" keyboardVerticalOffset={0}>
 			<View style={styles.chatActionBar}>
 				<Text style={styles.disclaimerText}>AI may make mistakes. This feature is in beta.</Text>
-				{chatMessages.length > 0 && (
-					<Pressable style={styles.resetChatBtn} onPress={resetChat}>
-						<RotateCcw size={14} color={colors.mutedForeground} />
-						<Text style={styles.resetChatText}>New chat</Text>
+				<View style={styles.chatActionBtns}>
+					{chatMessages.length > 0 && (
+						<Pressable style={styles.resetChatBtn} onPress={resetChat}>
+							<RotateCcw size={14} color={colors.mutedForeground} />
+							<Text style={styles.resetChatText}>New chat</Text>
+						</Pressable>
+					)}
+					<Pressable style={styles.resetChatBtn} onPress={() => setDeleteConfirmVisible(true)}>
+						<Trash2 size={14} color={colors.mutedForeground} />
+						<Text style={styles.resetChatText}>Delete models</Text>
 					</Pressable>
-				)}
+				</View>
 			</View>
+			<ConfirmSheet
+				visible={deleteConfirmVisible}
+				title="Delete Models"
+				body="This will delete all downloaded model files and free up storage. You can re-download them later."
+				confirmLabel="Delete"
+				destructive
+				onCancel={() => setDeleteConfirmVisible(false)}
+				onConfirm={deleteModels}
+			/>
 			<ScrollView
 				ref={scrollRef}
 				style={styles.messageList}
@@ -701,12 +742,23 @@ const styles = StyleSheet.create({
 		borderRadius: 4,
 		paddingHorizontal: 3
 	},
+	doNotLeave: {
+		fontSize: font.sm,
+		color: colors.mutedForeground,
+		fontWeight: '600',
+		textAlign: 'center',
+		marginTop: -spacing.xs
+	},
 	chatActionBar: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
 		paddingHorizontal: spacing.md,
 		paddingVertical: spacing.xs
+	},
+	chatActionBtns: {
+		flexDirection: 'row',
+		gap: spacing.xs
 	},
 	disclaimerText: {
 		fontSize: font.sm,
