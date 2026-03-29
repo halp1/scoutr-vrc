@@ -1,1 +1,0 @@
-export * as vda from './vda';
