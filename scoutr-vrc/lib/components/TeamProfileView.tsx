@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowRight, Gamepad2, Trophy, Award, TrendingUp } from 'lucide-react-native';
+import { ArrowRight, Gamepad2, Trophy, Award, TrendingUp, Star } from 'lucide-react-native';
 import { colors, font, spacing, radius } from '../theme';
 import { re } from '../robotevents';
 import type { Event, Team } from '../robotevents/robotevents/models';
 import { getVDAStatsByTeamNum } from '../data/vda';
 import type { VDAStats } from '../data/vda';
 import { CompetitionMode } from './CompetitionMode';
+import { useStorage } from '../state/storage';
 
 type MatchStats = { winRate: number; wins: number; losses: number; ties: number };
 type SkillsStats = { rank: number | null; score: number | null };
@@ -25,9 +26,17 @@ const formatEventDate = (event: Event): string => {
 interface Props {
 	teamId: number;
 	isOwnTeam?: boolean;
+	showFavorite?: boolean;
 }
 
-export const TeamProfileView = ({ teamId, isOwnTeam = false }: Props) => {
+export const TeamProfileView = ({ teamId, isOwnTeam = false, showFavorite = false }: Props) => {
+	const { addFavoriteTeam, removeFavoriteTeam, favorites } = useStorage();
+	const isFav = favorites.teams.includes(teamId);
+	const toggleFav = () => {
+		if (isFav) removeFavoriteTeam(teamId);
+		else addFavoriteTeam(teamId);
+	};
+
 	const [loadingTeam, setLoadingTeam] = useState(true);
 	const [loadingEvents, setLoadingEvents] = useState(true);
 	const [loadingMatches, setLoadingMatches] = useState(false);
@@ -213,10 +222,23 @@ export const TeamProfileView = ({ teamId, isOwnTeam = false }: Props) => {
 					</Card>
 				) : team ? (
 					<Card>
-						<Text style={styles.teamNumber}>{team.number}</Text>
-						<Text style={styles.teamName}>
-							{team.teamName ?? team.organization ?? 'Team profile'}
-						</Text>
+						<View style={styles.cardHeaderRow}>
+							<View style={{ flex: 1 }}>
+								<Text style={styles.teamNumber}>{team.number}</Text>
+								<Text style={styles.teamName}>
+									{team.teamName ?? team.organization ?? 'Team profile'}
+								</Text>
+							</View>
+							{showFavorite && (
+								<TouchableOpacity onPress={toggleFav} hitSlop={8} style={{ paddingRight: 4 }}>
+									<Star
+										size={20}
+										color={colors.foreground}
+										fill={isFav ? colors.foreground : 'transparent'}
+									/>
+								</TouchableOpacity>
+							)}
+						</View>
 						<View style={styles.statsRow}>
 							<View style={styles.statBox}>
 								<View style={styles.statLabel}>
@@ -390,9 +412,20 @@ export const TeamProfileView = ({ teamId, isOwnTeam = false }: Props) => {
 	);
 };
 
-const Section = ({ label, children }: { label: string; children: React.ReactNode }) => (
+const Section = ({
+	label,
+	children,
+	headerRight
+}: {
+	label: string;
+	children: React.ReactNode;
+	headerRight?: React.ReactNode;
+}) => (
 	<View style={styles.section}>
-		<Text style={styles.sectionLabel}>{label}</Text>
+		<View style={styles.sectionHeader}>
+			<Text style={styles.sectionLabel}>{label}</Text>
+			{headerRight}
+		</View>
 		{children}
 	</View>
 );
@@ -403,12 +436,17 @@ const Card = ({ children }: { children: React.ReactNode }) => (
 
 const styles = StyleSheet.create({
 	section: { marginBottom: spacing.xl },
+	sectionHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: 8
+	},
 	sectionLabel: {
 		fontSize: font.sm,
 		fontWeight: '500',
 		color: colors.mutedForeground,
 		letterSpacing: 0.5,
-		marginBottom: 8,
 		textTransform: 'uppercase'
 	},
 	card: {
@@ -420,6 +458,7 @@ const styles = StyleSheet.create({
 	},
 	cardPrimary: { borderColor: colors.primary },
 	cardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+	cardHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
 	eventName: {
 		flex: 1,
 		fontSize: font.xl,
@@ -436,7 +475,7 @@ const styles = StyleSheet.create({
 	eventLocation: { fontSize: font.md, color: colors.foreground, marginTop: 4 },
 	eventDate: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
 	teamNumber: { fontSize: font['2xl'], fontWeight: '600', color: colors.foreground },
-	teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2, marginBottom: 12 },
+	teamName: { fontSize: font.sm, color: colors.mutedForeground, marginTop: 2 },
 	statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 	statBox: {
 		width: '47.5%',

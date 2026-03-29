@@ -35,6 +35,7 @@ interface AppState extends AppStorage {
 	removeFavoriteTeam: (id: number) => void;
 	addFavoriteEvent: (id: number) => void;
 	removeFavoriteEvent: (id: number) => void;
+	reorderFavoriteTeams: (ids: number[]) => void;
 	setNote: (teamNumber: string, note: string) => void;
 	setAllNotes: (notes: Record<string, string>) => void;
 	setScoutingTeams: (teams: { id: string; name: string }[]) => void;
@@ -79,6 +80,7 @@ export const useStorage = create<AppState>()(
 				set((s) => ({
 					favorites: { ...s.favorites, events: s.favorites.events.filter((e) => e !== id) }
 				})),
+			reorderFavoriteTeams: (ids) => set((s) => ({ favorites: { ...s.favorites, teams: ids } })),
 			setNote: (teamNumber, note) => set((s) => ({ notes: { ...s.notes, [teamNumber]: note } })),
 			setAllNotes: (notes) => set({ notes }),
 			setScoutingTeams: (scoutingTeams) => set({ scoutingTeams }),

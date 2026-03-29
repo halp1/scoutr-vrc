@@ -315,7 +315,7 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
 						{team?.teamName ?? team?.organization ?? 'Team profile'}
 					</Text>
 				</TouchableOpacity>
-				<TouchableOpacity onPress={toggleFav} hitSlop={8}>
+				<TouchableOpacity onPress={toggleFav} hitSlop={8} style={{ paddingRight: 4 }}>
 					<Star
 						size={20}
 						color={colors.foreground}

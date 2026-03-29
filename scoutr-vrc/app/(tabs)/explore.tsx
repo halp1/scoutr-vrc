@@ -303,7 +303,7 @@ export default function ExploreScreen() {
 					<View style={styles.section}>
 						{teams.map((team) => (
 							<View key={team.id} style={{ marginBottom: 24 }}>
-								<TeamProfileView teamId={team.id} />
+								<TeamProfileView teamId={team.id} showFavorite />
 							</View>
 						))}
 					</View>
