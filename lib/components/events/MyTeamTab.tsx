@@ -4,6 +4,7 @@ import { RankStatsCard, SkillsStatsCard } from './StatsCards';
 import { MatchRow } from './MatchRow';
 import { useStorage } from '../../state/storage';
 import type { RatingsResult } from '../../robotevents/ratings';
+import type { VDAStats } from '../../data/vda';
 
 type RankingRow = {
 	rank: number;
@@ -47,6 +48,8 @@ interface Props {
 	teamNumberToId: Map<string, number>;
 	loading?: boolean;
 	onMatchPress?: (row: ScheduleRow) => void;
+	vdaMap?: Map<string, VDAStats> | null;
+	predictionsEnabled?: boolean;
 }
 
 export const MyTeamTab = ({
@@ -56,7 +59,9 @@ export const MyTeamTab = ({
 	divisionRatings,
 	teamNumberToId,
 	loading = false,
-	onMatchPress
+	onMatchPress,
+	vdaMap,
+	predictionsEnabled
 }: Props) => {
 	const { team: teamNumber } = useStorage();
 
@@ -115,14 +120,30 @@ export const MyTeamTab = ({
 				</View>
 			) : (
 				<View style={{ gap: 4 }}>
-					{myMatches.map((row, i) => (
-						<MatchRow
-							key={i}
-							row={row}
-							highlightTeam={myRanking.team}
-							onPress={onMatchPress ? () => onMatchPress(row) : undefined}
-						/>
-					))}
+					{myMatches.map((row, i) => {
+						const pred =
+							predictionsEnabled && vdaMap != null && !row.played
+								? {
+										red: Math.round(
+											row.red.reduce((a, t) => a + (vdaMap.get(t.toUpperCase())?.opr ?? vdaMap.get(t)?.opr ?? 0), 0) * 0.5 +
+												row.blue.reduce((a, t) => a + (vdaMap.get(t.toUpperCase())?.dpr ?? vdaMap.get(t)?.dpr ?? 0), 0) * 0.5
+										),
+										blue: Math.round(
+											row.blue.reduce((a, t) => a + (vdaMap.get(t.toUpperCase())?.opr ?? vdaMap.get(t)?.opr ?? 0), 0) * 0.5 +
+												row.red.reduce((a, t) => a + (vdaMap.get(t.toUpperCase())?.dpr ?? vdaMap.get(t)?.dpr ?? 0), 0) * 0.5
+										)
+									  }
+								: undefined;
+						return (
+							<MatchRow
+								key={i}
+								row={row}
+								highlightTeam={myRanking.team}
+								predictedScore={pred}
+								onPress={onMatchPress ? () => onMatchPress(row) : undefined}
+							/>
+						);
+					})}
 				</View>
 			)}
 			<View style={{ height: 24 }} />
