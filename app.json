@@ -38,11 +38,17 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      [
-        "expo-web-browser"
-      ],
+      ["expo-web-browser"],
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "Allow Scoutr to connect to your VEX V5 Brain via Bluetooth to send match mode commands."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

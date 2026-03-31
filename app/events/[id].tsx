@@ -53,6 +53,7 @@ import { MyTeamTab } from "../../lib/components/events/MyTeamTab";
 import { TeamDrawer } from "../../lib/components/events/TeamDrawer";
 import { MatchDrawer } from "../../lib/components/events/MatchDrawer";
 import { useStorage } from "../../lib/state/storage";
+import { useLivePolling } from "../../lib/hooks/useLivePolling";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const TAB_WIDTH = (SCREEN_WIDTH - spacing.md * 2) / 5;
@@ -320,6 +321,12 @@ export default function EventScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [liveKey, setLiveKey] = useState(0);
+  const hasInitializedRef = useRef(false);
+
+  const { lastRefreshed } = useLivePolling(() => {
+    if (hasInitializedRef.current) setLiveKey((k) => k + 1);
+  });
 
   const [eventMeta, setEventMeta] = useState<Awaited<
     ReturnType<typeof re.events.eventGetEvent>
@@ -447,6 +454,7 @@ export default function EventScreen() {
     }
 
     let cancelled = false;
+    hasInitializedRef.current = false;
     setLoadingEvent(true);
     setLoadingTeams(true);
     setLoadError(null);
@@ -566,15 +574,43 @@ export default function EventScreen() {
   }, []);
 
   useEffect(() => {
-    if (
-      !loadingEvent &&
-      !loadingTeams &&
-      !loadingRankings &&
-      !loadingMatches &&
-      refreshing
-    )
-      setRefreshing(false);
+    if (!loadingEvent && !loadingTeams && !loadingRankings && !loadingMatches) {
+      hasInitializedRef.current = true;
+      if (refreshing) setRefreshing(false);
+    }
   }, [loadingEvent, loadingTeams, loadingRankings, loadingMatches, refreshing]);
+
+  useEffect(() => {
+    if (liveKey === 0 || selectedDivisionId === null) return;
+    let cancelled = false;
+
+    Promise.all([
+      re.depaginate(
+        re.events.eventGetDivisionRankings(
+          { id: eventId, div: selectedDivisionId },
+          re.custom.maxPages,
+        ),
+        re.models.PaginatedRankingFromJSON,
+      ),
+      re.depaginate(
+        re.events.eventGetDivisionMatches(
+          { id: eventId, div: selectedDivisionId },
+          re.custom.maxPages,
+        ),
+        re.models.PaginatedMatchFromJSON,
+      ),
+    ])
+      .then(([rankings, matches]) => {
+        if (cancelled) return;
+        setRawRankings(rankings);
+        setRawMatches(matches);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [liveKey]);
 
   const activeIndexRef = useRef(0);
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -732,6 +768,9 @@ export default function EventScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <ArrowLeft size={24} color={colors.foreground} />
         </TouchableOpacity>
+        <Text style={styles.topBarTitle} numberOfLines={1}>
+          {eventMeta?.name ?? ""}
+        </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <TouchableOpacity style={styles.searchBtn} onPress={() => setSearchOpen(true)}>
             <Search size={18} color={colors.mutedForeground} />
@@ -788,6 +827,19 @@ export default function EventScreen() {
       {loadError && (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{loadError}</Text>
+        </View>
+      )}
+
+      {lastRefreshed && (
+        <View style={styles.livePill}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>
+            Live ·{" "}
+            {lastRefreshed.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </Text>
         </View>
       )}
 
@@ -1024,6 +1076,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
+  topBarTitle: {
+    flex: 1,
+    fontSize: font.base,
+    fontWeight: "600",
+    color: colors.foreground,
+    marginLeft: spacing.xs,
+    marginRight: spacing.sm,
+  },
   backBtn: {
     width: 40,
     height: 40,
@@ -1055,6 +1115,23 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { color: colors.destructive, fontSize: font.sm },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.green,
+  },
+  liveText: {
+    fontSize: font.xs,
+    color: colors.mutedForeground,
+  },
   tabBar: {
     flexDirection: "row",
     backgroundColor: colors.card,
