@@ -12,7 +12,3 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 
 # Add any project specific keep options here:
-
-# Fix R8 missing class errors for expo-notifications / expo-modules-core
--keep class expo.modules.kotlin.types.JSTypeConverterProvider { *; }
--keep class expo.modules.kotlin.types.JSTypeConverterProvider$* { *; }
