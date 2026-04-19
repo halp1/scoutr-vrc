@@ -116,13 +116,23 @@ const fromHistoricalJson = (json: Record<string, any>): VDAStats => {
 
 const fetchAllTeams = async (): Promise<VDAStats[]> => {
   const res = await fetch(`${VDA_BASE}/allteams`);
-  const json: unknown[] = await res.json();
+  let json: unknown[];
+  try {
+    json = await res.json();
+  } catch {
+    return [];
+  }
   return json.map((e) => fromCurrentJson(e as Record<string, any>));
 };
 
 const fetchHistoricalAllTeams = async (seasonId: number): Promise<VDAStats[]> => {
   const res = await fetch(`${VDA_BASE}/historical_allteams/${seasonId}`);
-  const json: unknown[] = await res.json();
+  let json: unknown[];
+  try {
+    json = await res.json();
+  } catch {
+    return [];
+  }
   return json.map((e) => fromHistoricalJson(e as Record<string, any>));
 };
 
@@ -132,6 +142,11 @@ const vdaCache = new Cache({
 } as const);
 
 const memCache = new Map<string, Map<string, VDAStats>>();
+
+export const clearVdaCache = async () => {
+  memCache.clear();
+  await Promise.all([vdaCache.invalidate("vda.allteams")]);
+};
 
 const getAll = async (
   key: "vda.allteams" | "vda.historical",

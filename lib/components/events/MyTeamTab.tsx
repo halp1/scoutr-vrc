@@ -90,8 +90,8 @@ export const MyTeamTab = ({
 	);
 
 	const myTeamId = teamNumberToId.get(key);
-	const opr = myTeamId != null ? (divisionRatings?.opr[myTeamId] ?? null) : null;
-	const dpr = myTeamId != null ? (divisionRatings?.dpr[myTeamId] ?? null) : null;
+		const opr = myTeamId != null ? (divisionRatings?.opr[myTeamId] ?? null) : null;
+		const dpr = myTeamId != null ? (divisionRatings?.dpr[myTeamId] ?? null) : null;
 	const ccwm = myTeamId != null ? (divisionRatings?.ccwm[myTeamId] ?? null) : null;
 
 	if (!myRanking) {
@@ -99,7 +99,7 @@ export const MyTeamTab = ({
 			<View style={styles.emptyWrap}>
 				<Text style={styles.emptyTitle}>{teamNumber}</Text>
 				<Text style={styles.emptyBody}>
-					Your team is not registered for this event, or rankings have not been posted yet.
+					Rankings/schedules have not been posted yet.
 				</Text>
 			</View>
 		);

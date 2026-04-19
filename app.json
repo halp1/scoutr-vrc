@@ -15,9 +15,16 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.scoutrvrc.app"
+      "bundleIdentifier": "com.scoutrvrc.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSUserNotificationUsageDescription": "Scoutr sends you match results and award notifications for your watched teams.",
+        "NSMicrophoneUsageDescription": "Allow Scoutr to access your microphone to record match audio.",
+        "NSCameraUsageDescription": "Allow Scoutr to access your camera to record matches."
+      }
     },
     "android": {
+      "minSdkVersion": 26,
       "adaptiveIcon": {
         "backgroundColor": "#09090b",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -27,8 +34,15 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.scoutrvrc.app",
       "permissions": [
+        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -38,9 +52,40 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "default"
+        }
+      ],
       ["expo-web-browser"],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
       "expo-audio",
+      "expo-screen-orientation",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Scoutr to access your camera to record matches.",
+          "microphonePermission": "Allow Scoutr to access your microphone to record match audio.",
+          "recordAudioAndroid": true
+        }
+      ],
       "expo-asset",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Scoutr to access your photos.",
+          "savePhotosPermission": "Allow Scoutr to save recorded match videos.",
+          "granularPermissions": ["photo", "video"]
+        }
+      ],
       [
         "react-native-ble-plx",
         {

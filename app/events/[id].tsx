@@ -34,7 +34,7 @@ import {
   calculateOprDprCcwm,
   robotEventsMatchesToScoredMatches,
 } from "../../lib/robotevents";
-import { getVDAMap } from "../../lib/data/vda";
+import { getVDAMap, clearVdaCache } from "../../lib/data/vda";
 import type { VDAStats } from "../../lib/data/vda";
 import type {
   MatchObj,
@@ -462,6 +462,7 @@ export default function EventScreen() {
     re.depaginate(
       re.events.eventGetTeams({ id: eventId }, re.custom.maxPages),
       re.models.PaginatedTeamFromJSON,
+      250,
     )
       .then((teams) => {
         if (!cancelled) setTeamLookup(buildTeamLookup(teams));
@@ -474,6 +475,7 @@ export default function EventScreen() {
     re.depaginate(
       re.events.eventGetAwards({ id: eventId }, re.custom.maxPages),
       re.models.PaginatedAwardFromJSON,
+      250,
     )
       .then((eventAwards) => {
         if (!cancelled) setAwards(eventAwards);
@@ -483,6 +485,7 @@ export default function EventScreen() {
     re.depaginate(
       re.events.eventGetSkills({ id: eventId }, re.custom.maxPages),
       re.models.PaginatedSkillFromJSON,
+      250,
     )
       .then((skills) => {
         if (!cancelled) setAllSkills(skills);
@@ -534,6 +537,7 @@ export default function EventScreen() {
         re.custom.maxPages,
       ),
       re.models.PaginatedRankingFromJSON,
+      250,
     )
       .then((rankings) => {
         if (!cancelled) setRawRankings(rankings);
@@ -551,6 +555,7 @@ export default function EventScreen() {
         re.custom.maxPages,
       ),
       re.models.PaginatedMatchFromJSON,
+      250,
     )
       .then((matches) => {
         if (!cancelled) setRawMatches(matches);
@@ -570,6 +575,9 @@ export default function EventScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setEventMeta(null);
+    setVdaMap(null);
+    setPredictionsEnabled(false);
+    clearVdaCache();
     setRefreshKey((k) => k + 1);
   }, []);
 
@@ -591,6 +599,7 @@ export default function EventScreen() {
           re.custom.maxPages,
         ),
         re.models.PaginatedRankingFromJSON,
+        250,
       ),
       re.depaginate(
         re.events.eventGetDivisionMatches(
@@ -598,6 +607,7 @@ export default function EventScreen() {
           re.custom.maxPages,
         ),
         re.models.PaginatedMatchFromJSON,
+        250,
       ),
     ])
       .then(([rankings, matches]) => {
@@ -677,8 +687,12 @@ export default function EventScreen() {
             re.custom.maxPages,
           ),
           re.models.PaginatedSeasonFromJSON,
+          250,
         );
-        const currentSeason = seasons.reduce((a, b) => (a.end! > b.end! ? a : b));
+        const now = new Date();
+        const started = seasons.filter((s) => s.start && s.start <= now);
+        const pool = started.length > 0 ? started : seasons;
+        const currentSeason = pool.reduce((a, b) => (a.start! > b.start! ? a : b));
         const map = await getVDAMap(eventMeta.season?.id ?? 0, currentSeason.id!);
         setVdaMap(map);
       } catch {

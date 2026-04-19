@@ -20,6 +20,7 @@ import type { Event } from "../../lib/robotevents/robotevents/models";
 import { useStorage } from "../../lib/state/storage";
 import { FavoriteTeamEntry } from "../../lib/components/FavoriteTeamEntry";
 import { DragTeamRow } from "../../lib/components/DragTeamRow";
+import { clearVdaCache } from "../../lib/data/vda";
 
 export default function FavoritesScreen() {
   const { favorites, reorderFavoriteTeams } = useStorage();
@@ -31,6 +32,7 @@ export default function FavoritesScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    clearVdaCache();
     setRefreshKey((k) => k + 1);
   }, []);
 

@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import {
@@ -14,6 +15,8 @@ import {
   TrendingUp,
   Award,
   Star,
+  Bell,
+  BellOff,
 } from "lucide-react-native";
 import { colors, font, radius, spacing } from "../theme";
 import { re } from "../robotevents";
@@ -24,17 +27,56 @@ import type { TeamSummary, TeamSkills } from "./events/StatsCards";
 import { getVDAStatsByTeamNum, type VDAStats } from "../data/vda";
 import { useStorage } from "../state/storage";
 import { useLivePolling } from "../hooks/useLivePolling";
+import { requestNotificationPermission } from "../notifications";
+import {
+  addNotificationPreference,
+  removeNotificationPreference,
+  registerPushToken,
+} from "../supabase/notifications";
+import { getExpoPushToken } from "../notifications";
 
 interface Props {
   teamId: number;
 }
 
 export const FavoriteTeamEntry = ({ teamId }: Props) => {
-  const { addFavoriteTeam, removeFavoriteTeam, favorites } = useStorage();
+  const {
+    addFavoriteTeam,
+    removeFavoriteTeam,
+    favorites,
+    auth,
+    notifications,
+    toggleNotificationFavorite,
+  } = useStorage();
   const isFav = favorites.teams.includes(teamId);
+  const isNotifEnabled = notifications.favorites.includes(teamId);
   const toggleFav = () => {
     if (isFav) removeFavoriteTeam(teamId);
     else addFavoriteTeam(teamId);
+  };
+  const toggleNotif = async () => {
+    if (!auth) {
+      Alert.alert("Sign in required", "Sign in to enable push notifications.");
+      return;
+    }
+    if (!isNotifEnabled) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          "Permission denied",
+          "Enable notifications in your device settings to receive match and award updates.",
+        );
+        return;
+      }
+      const token = await getExpoPushToken();
+      if (token) await registerPushToken(token);
+      if (team) {
+        await addNotificationPreference(teamId, team.number, team.program.id);
+      }
+    } else {
+      await removeNotificationPreference(teamId);
+    }
+    toggleNotificationFavorite(teamId);
   };
 
   const [team, setTeam] = useState<Team | null>(null);
@@ -89,13 +131,17 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
             re.custom.maxPages,
           ),
           re.models.PaginatedSeasonFromJSON,
+          250,
         );
         if (cancelled || seasons.length === 0) {
           if (!cancelled) setLoadingHeader(false);
           return;
         }
 
-        const season = seasons.reduce((a, b) => (a.end! > b.end! ? a : b));
+        const now = new Date();
+        const started = seasons.filter((s) => s.start && s.start <= now);
+        const pool = started.length > 0 ? started : seasons;
+        const season = pool.reduce((a, b) => (a.start! > b.start! ? a : b));
         if (!cancelled) {
           setSeasonId(season.id!);
           setLoadingMatches(true);
@@ -110,7 +156,6 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
         );
         if (cancelled) return;
 
-        const now = new Date();
         now.setHours(0, 0, 0, 0);
         const active =
           events.find((e) => {
@@ -132,6 +177,7 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
                 re.custom.maxPages,
               ),
               re.models.PaginatedMatchFromJSON,
+              250,
             );
             if (cancelled) return;
             const totals = matches.reduce(
@@ -201,6 +247,7 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
                 re.custom.maxPages,
               ),
               re.models.PaginatedAwardFromJSON,
+              250,
             );
             if (!cancelled) setAwardsCount(awards.length);
           } catch {
@@ -257,10 +304,12 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
           re.custom.maxPages,
         ),
         re.models.PaginatedRankingFromJSON,
+        250,
       ),
       re.depaginate(
         re.events.eventGetTeams({ id: activeEvent.id }, re.custom.maxPages),
         re.models.PaginatedTeamFromJSON,
+        250,
       ),
     ])
       .then(([rankings, teams]) => {
@@ -293,6 +342,7 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
     re.depaginate(
       re.events.eventGetSkills({ id: activeEvent.id }, re.custom.maxPages),
       re.models.PaginatedSkillFromJSON,
+      250,
     )
       .then((skills) => {
         if (cancelled) return;
@@ -365,6 +415,13 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
           <Text style={styles.teamName}>
             {team?.teamName ?? team?.organization ?? "Team profile"}
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleNotif} hitSlop={8} style={{ paddingRight: 8 }}>
+          {isNotifEnabled ? (
+            <Bell size={18} color={colors.primary} fill={colors.primary} />
+          ) : (
+            <BellOff size={18} color={colors.mutedForeground} />
+          )}
         </TouchableOpacity>
         <TouchableOpacity onPress={toggleFav} hitSlop={8} style={{ paddingRight: 4 }}>
           <Star

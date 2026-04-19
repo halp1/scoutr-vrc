@@ -12,6 +12,7 @@ import { colors, font, spacing, radius } from "../../lib/theme";
 import { re } from "../../lib/robotevents";
 import { useStorage } from "../../lib/state/storage";
 import { TeamProfileView } from "../../lib/components/TeamProfileView";
+import { clearVdaCache } from "../../lib/data/vda";
 
 export default function HomeScreen() {
   const { team: teamNumber, program: programId } = useStorage();
@@ -22,6 +23,7 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    clearVdaCache();
     setRefreshKey((k) => k + 1);
     setRefreshing(false);
   }, []);

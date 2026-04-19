@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import {
   View,
+  Animated,
   Text,
   ScrollView,
   Modal,
@@ -82,12 +83,50 @@ export const TeamDrawer = ({
     }, 1000);
   };
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const dragY = useRef(new Animated.Value(900)).current;
+  const translateY = useRef(
+    dragY.interpolate({
+      inputRange: [0, 900],
+      outputRange: [0, 900],
+      extrapolateLeft: "clamp",
+    }),
+  ).current;
+  const backdropOpacity = useRef(
+    dragY.interpolate({
+      inputRange: [0, 900],
+      outputRange: [1, 0],
+      extrapolate: "clamp",
+    }),
+  ).current;
+  const dismiss = useRef(() => {
+    Animated.timing(dragY, { toValue: 900, duration: 250, useNativeDriver: true }).start(
+      () => {
+        onCloseRef.current();
+      },
+    );
+  }).current;
+  useEffect(() => {
+    if (open) {
+      dragY.setValue(900);
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+    }
+  }, [open]);
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 10,
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => dragY.setValue(0),
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) dragY.setValue(g.dy);
+      },
       onPanResponderRelease: (_, g) => {
-        if (g.dy > 50) onClose();
+        if (g.dy > 80 || g.vy > 0.5) {
+          dismiss();
+        } else {
+          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+        }
       },
     }),
   ).current;
@@ -98,13 +137,21 @@ export const TeamDrawer = ({
       visible={open}
       transparent
       statusBarTranslucent
-      animationType="slide"
-      onRequestClose={onClose}
+      animationType="none"
+      onRequestClose={dismiss}
     >
       <View style={styles.modalContainer}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.sheet,
+            {
+              paddingBottom: Math.max(insets.bottom, spacing.lg),
+              transform: [{ translateY }],
+            },
+          ]}
         >
           <View style={styles.handleZone} {...panResponder.panHandlers}>
             <View style={styles.handle} />
@@ -218,7 +265,7 @@ export const TeamDrawer = ({
 
             <View style={{ height: 24 }} />
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

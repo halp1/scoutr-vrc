@@ -149,6 +149,7 @@ export const CompetitionMode = ({ event, teamId, teamNumber }: Props) => {
     re.depaginate(
       re.events.eventGetSkills({ id: event.id }, re.custom.maxPages),
       re.models.PaginatedSkillFromJSON,
+      250,
     )
       .then((skills) => {
         if (cancelled) return;
@@ -219,6 +220,7 @@ export const CompetitionMode = ({ event, teamId, teamNumber }: Props) => {
     re.depaginate(
       re.events.eventGetDivisionMatches({ id: event.id, div: divId }, re.custom.maxPages),
       re.models.PaginatedMatchFromJSON,
+      250,
     )
       .then((matches) => {
         if (cancelled) return;
@@ -295,10 +297,12 @@ export const CompetitionMode = ({ event, teamId, teamNumber }: Props) => {
           re.custom.maxPages,
         ),
         re.models.PaginatedRankingFromJSON,
+        250,
       ),
       re.depaginate(
         re.events.eventGetTeams({ id: event.id }, re.custom.maxPages),
         re.models.PaginatedTeamFromJSON,
+        250,
       ),
     ])
       .then(([rankings, teams]) => {
