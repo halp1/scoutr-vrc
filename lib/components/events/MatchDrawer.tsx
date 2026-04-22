@@ -9,6 +9,7 @@ import {
   StyleSheet,
   PanResponder,
   TouchableOpacity,
+  Platform,
 } from "react-native";
 import { Zap } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -85,16 +86,21 @@ export const MatchDrawer = ({
     }),
   ).current;
   const dismiss = useRef(() => {
-    Animated.timing(dragY, { toValue: 900, duration: 250, useNativeDriver: true }).start(
-      () => {
-        onCloseRef.current();
-      },
-    );
+    Animated.timing(dragY, {
+      toValue: 900,
+      duration: 250,
+      useNativeDriver: Platform.OS !== "web",
+    }).start(() => {
+      onCloseRef.current();
+    });
   }).current;
   useEffect(() => {
     if (open) {
       dragY.setValue(900);
-      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+      Animated.spring(dragY, {
+        toValue: 0,
+        useNativeDriver: Platform.OS !== "web",
+      }).start();
     }
   }, [open]);
   const panResponder = useRef(
@@ -109,7 +115,10 @@ export const MatchDrawer = ({
         if (g.dy > 80 || g.vy > 0.5) {
           dismiss();
         } else {
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
         }
       },
     }),

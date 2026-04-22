@@ -1,4 +1,5 @@
 import { Cache, time } from "../robotevents/cache";
+import { CONSTANTS } from "../const";
 
 export interface VDAStats {
   id: number;
@@ -35,7 +36,7 @@ export interface VDAStats {
   regionSkillsRank: number | null;
 }
 
-const VDA_BASE = "https://vrc-data-analysis.com/v1";
+const PROXY_BASE = `${CONSTANTS.PROXY_URL}/vda`;
 const VDA_EARLIEST_SEASON = 154;
 
 const fromCurrentJson = (json: Record<string, any>): VDAStats => ({
@@ -115,7 +116,7 @@ const fromHistoricalJson = (json: Record<string, any>): VDAStats => {
 };
 
 const fetchAllTeams = async (): Promise<VDAStats[]> => {
-  const res = await fetch(`${VDA_BASE}/allteams`);
+  const res = await fetch(`${PROXY_BASE}?path=allteams`);
   let json: unknown[];
   try {
     json = await res.json();
@@ -126,7 +127,7 @@ const fetchAllTeams = async (): Promise<VDAStats[]> => {
 };
 
 const fetchHistoricalAllTeams = async (seasonId: number): Promise<VDAStats[]> => {
-  const res = await fetch(`${VDA_BASE}/historical_allteams/${seasonId}`);
+  const res = await fetch(`${PROXY_BASE}?path=historical_allteams/${seasonId}`);
   let json: unknown[];
   try {
     json = await res.json();

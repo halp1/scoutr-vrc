@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Linking,
   PanResponder,
+  Platform,
 } from "react-native";
 import { colors, eventFont as font, radius, spacing } from "../../theme";
 import type { Award } from "../../robotevents/robotevents/models";
@@ -75,13 +76,16 @@ export const InfoTab = ({
     Animated.timing(teamsDragY, {
       toValue: 900,
       duration: 250,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start(() => setTeamsOpen(false));
   }).current;
   useEffect(() => {
     if (teamsOpen) {
       teamsDragY.setValue(900);
-      Animated.spring(teamsDragY, { toValue: 0, useNativeDriver: true }).start();
+      Animated.spring(teamsDragY, {
+        toValue: 0,
+        useNativeDriver: Platform.OS !== "web",
+      }).start();
     }
   }, [teamsOpen]);
   const teamsPanResponder = useRef(
@@ -96,7 +100,10 @@ export const InfoTab = ({
         if (g.dy > 80 || g.vy > 0.5) {
           dismissTeams();
         } else {
-          Animated.spring(teamsDragY, { toValue: 0, useNativeDriver: true }).start();
+          Animated.spring(teamsDragY, {
+            toValue: 0,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
         }
       },
     }),
@@ -123,7 +130,7 @@ export const InfoTab = ({
         <Text style={styles.fieldLabel}>Tournament Name</Text>
         <Text style={styles.eventName}>{info.name}</Text>
 
-        {sku && (
+        {!!sku && (
           <TouchableOpacity
             onPress={() =>
               Linking.openURL(

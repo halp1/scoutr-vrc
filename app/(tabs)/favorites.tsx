@@ -7,6 +7,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  FlatList,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -87,7 +89,7 @@ export default function FavoritesScreen() {
       >
         <View style={styles.headingRow}>
           <Text style={styles.heading}>Favorites</Text>
-          {favorites.teams.length > 0 && (
+          {favorites.teams.length > 0 && Platform.OS !== "web" && (
             <TouchableOpacity onPress={() => setEditMode((v) => !v)} hitSlop={8}>
               {editMode ? (
                 <Text style={styles.doneButton}>Done</Text>
@@ -142,7 +144,7 @@ export default function FavoritesScreen() {
             {!editMode && (
               <Text style={styles.sectionHint}>Tap a team to view more information</Text>
             )}
-            {editMode ? (
+            {editMode && Platform.OS !== "web" ? (
               <DraggableFlatList
                 data={favorites.teams}
                 keyExtractor={(item) => String(item)}

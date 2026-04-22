@@ -9,6 +9,7 @@ import {
   StyleSheet,
   PanResponder,
   Dimensions,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { X, BookOpen } from "lucide-react-native";
@@ -63,16 +64,21 @@ export const RuleDrawer = ({
     }),
   ).current;
   const dismiss = useRef(() => {
-    Animated.timing(dragY, { toValue: 900, duration: 250, useNativeDriver: true }).start(
-      () => {
-        onCloseRef.current();
-      },
-    );
+    Animated.timing(dragY, {
+      toValue: 900,
+      duration: 250,
+      useNativeDriver: Platform.OS !== "web",
+    }).start(() => {
+      onCloseRef.current();
+    });
   }).current;
   useEffect(() => {
     if (visible) {
       dragY.setValue(900);
-      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+      Animated.spring(dragY, {
+        toValue: 0,
+        useNativeDriver: Platform.OS !== "web",
+      }).start();
     }
   }, [visible]);
   const panResponder = useRef(
@@ -87,7 +93,10 @@ export const RuleDrawer = ({
         if (gs.dy > DISMISS_THRESHOLD || gs.vy > 0.5) {
           dismiss();
         } else {
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
         }
       },
     }),

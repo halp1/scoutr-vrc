@@ -9,6 +9,7 @@ import {
   StyleSheet,
   PanResponder,
   TextInput,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, eventFont as font, radius, spacing } from "../../theme";
@@ -101,16 +102,21 @@ export const TeamDrawer = ({
     }),
   ).current;
   const dismiss = useRef(() => {
-    Animated.timing(dragY, { toValue: 900, duration: 250, useNativeDriver: true }).start(
-      () => {
-        onCloseRef.current();
-      },
-    );
+    Animated.timing(dragY, {
+      toValue: 900,
+      duration: 250,
+      useNativeDriver: Platform.OS !== "web",
+    }).start(() => {
+      onCloseRef.current();
+    });
   }).current;
   useEffect(() => {
     if (open) {
       dragY.setValue(900);
-      Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+      Animated.spring(dragY, {
+        toValue: 0,
+        useNativeDriver: Platform.OS !== "web",
+      }).start();
     }
   }, [open]);
   const panResponder = useRef(
@@ -125,7 +131,10 @@ export const TeamDrawer = ({
         if (g.dy > 80 || g.vy > 0.5) {
           dismiss();
         } else {
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: Platform.OS !== "web",
+          }).start();
         }
       },
     }),

@@ -1,0 +1,5 @@
+[functions.events-proxy]
+verify_jwt = false
+
+[functions.vda-proxy]
+verify_jwt = false

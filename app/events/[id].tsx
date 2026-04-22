@@ -14,6 +14,7 @@ import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -311,8 +312,12 @@ const mapSkills = (skills: Skill[], teams: Map<number, TeamLookup>): SkillsRow[]
 };
 
 export default function EventScreen() {
-  const { id: idParam } = useLocalSearchParams<{ id: string }>();
+  const { id: idParam, teamNumber: teamNumberParam } = useLocalSearchParams<{
+    id: string;
+    teamNumber?: string;
+  }>();
   const eventId = parseInt(idParam ?? "", 10);
+  const focusTeamNumber = teamNumberParam ?? null;
 
   const [loadingEvent, setLoadingEvent] = useState(false);
   const [loadingTeams, setLoadingTeams] = useState(false);
@@ -323,6 +328,7 @@ export default function EventScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [liveKey, setLiveKey] = useState(0);
   const hasInitializedRef = useRef(false);
+  const hasAutoFocusedRef = useRef(false);
 
   const { lastRefreshed } = useLivePolling(() => {
     if (hasInitializedRef.current) setLiveKey((k) => k + 1);
@@ -379,8 +385,18 @@ export default function EventScreen() {
     );
   }, [rawMatches]);
 
+  const playedRatings = useMemo(() => {
+    const quals = rawMatches.filter((m) => m.round === 2);
+    if (quals.length === 0) return null;
+    return calculateOprDprCcwm(
+      robotEventsMatchesToScoredMatches(quals, { includeUnscored: false }),
+    );
+  }, [rawMatches]);
+
   const insets = useSafeAreaInsets();
   const { team: myTeamNumber } = useStorage();
+
+  const effectiveTeamNumber = focusTeamNumber ?? myTeamNumber;
 
   const teamNumberToId = useMemo(
     () =>
@@ -390,12 +406,63 @@ export default function EventScreen() {
     [teamLookup],
   );
 
+  const predictiveVdaMap = useMemo((): Map<string, VDAStats> | null => {
+    if (vdaMap === null) return null;
+    if (!playedRatings) return vdaMap;
+    const merged = new Map<string, VDAStats>(vdaMap);
+    for (const [teamId, info] of teamLookup.entries()) {
+      const key = info.number.toUpperCase();
+      const existing = merged.get(key) ?? merged.get(info.number);
+      const localOpr = playedRatings.opr[teamId];
+      const localDpr = playedRatings.dpr[teamId];
+      if (existing) {
+        if (existing.opr === null && localOpr !== undefined) {
+          merged.set(key, {
+            ...existing,
+            opr: localOpr,
+            dpr: localDpr ?? null,
+            ccwm: localDpr !== undefined ? localOpr - localDpr : null,
+          });
+        }
+      } else if (localOpr !== undefined) {
+        merged.set(key, {
+          id: teamId,
+          teamNum: info.number,
+          teamName: info.name,
+          gradeLevel: null,
+          opr: localOpr,
+          dpr: localDpr ?? null,
+          ccwm: localDpr !== undefined ? localOpr - localDpr : null,
+          wins: null,
+          losses: null,
+          ties: null,
+          matches: null,
+          winPercent: null,
+          trueSkill: null,
+          trueSkillGlobalRank: null,
+          trueSkillRegionRank: null,
+          regionalQual: null,
+          worldsQual: null,
+          eventRegion: null,
+          locRegion: null,
+          locCountry: null,
+          skillsScore: null,
+          maxAuto: null,
+          maxDriver: null,
+          worldSkillsRank: null,
+          regionSkillsRank: null,
+        });
+      }
+    }
+    return merged;
+  }, [vdaMap, playedRatings, teamLookup]);
+
   const isMyTeamRegistered = useMemo(
     () =>
-      !!myTeamNumber &&
+      !!effectiveTeamNumber &&
       teamLookup.size > 0 &&
-      teamNumberToId.has(myTeamNumber.toLowerCase()),
-    [myTeamNumber, teamLookup, teamNumberToId],
+      teamNumberToId.has(effectiveTeamNumber.toLowerCase()),
+    [effectiveTeamNumber, teamLookup, teamNumberToId],
   );
 
   const activeTabMeta = useMemo(
@@ -455,15 +522,13 @@ export default function EventScreen() {
 
     let cancelled = false;
     hasInitializedRef.current = false;
+    hasAutoFocusedRef.current = false;
     setLoadingEvent(true);
     setLoadingTeams(true);
     setLoadError(null);
 
-    re.depaginate(
-      re.events.eventGetTeams({ id: eventId }, re.custom.maxPages),
-      re.models.PaginatedTeamFromJSON,
-      250,
-    )
+    re.custom.cache
+      .load("event.teams", eventId)
       .then((teams) => {
         if (!cancelled) setTeamLookup(buildTeamLookup(teams));
       })
@@ -472,29 +537,23 @@ export default function EventScreen() {
         if (!cancelled) setLoadingTeams(false);
       });
 
-    re.depaginate(
-      re.events.eventGetAwards({ id: eventId }, re.custom.maxPages),
-      re.models.PaginatedAwardFromJSON,
-      250,
-    )
+    re.custom.cache
+      .load("event.awards", eventId)
       .then((eventAwards) => {
         if (!cancelled) setAwards(eventAwards);
       })
       .catch(() => {});
 
-    re.depaginate(
-      re.events.eventGetSkills({ id: eventId }, re.custom.maxPages),
-      re.models.PaginatedSkillFromJSON,
-      250,
-    )
+    re.custom.cache
+      .load("event.skills", eventId)
       .then((skills) => {
         if (!cancelled) setAllSkills(skills);
       })
       .catch(() => {});
 
-    re.events
-      .eventGetEvent({ id: eventId })
-      .then((event) => {
+    re.custom.cache
+      .load("event.meta", eventId)
+      .then(async (event) => {
         if (cancelled) return;
         const sortedDivs = [...(event.divisions ?? [])].sort(
           (a, b) => (a.order ?? 0) - (b.order ?? 0),
@@ -503,7 +562,46 @@ export default function EventScreen() {
         setEventSku((event as any).sku ?? "");
         setDivisions(sortedDivs);
         setInfoData(buildInfoData(event, sortedDivs[0]?.name ?? "Division"));
-        if (sortedDivs[0]) setSelectedDivisionId(sortedDivs[0].id);
+
+        let targetDivId = sortedDivs[0]?.id ?? null;
+
+        if (focusTeamNumber && sortedDivs.length > 1) {
+          try {
+            const focusTeamId = await re
+              .depaginate(
+                re.team.teamGetTeams({ number: [focusTeamNumber] }, re.custom.maxPages),
+                re.models.PaginatedTeamFromJSON,
+              )
+              .then(
+                (teams) =>
+                  teams.find(
+                    (t) => t.number.toLowerCase() === focusTeamNumber.toLowerCase(),
+                  )?.id,
+              );
+            if (focusTeamId != null && !cancelled) {
+              const teamMatches = await re
+                .depaginate(
+                  re.team.teamGetMatches(
+                    { id: focusTeamId, event: [eventId] },
+                    re.custom.maxPages,
+                  ),
+                  re.models.PaginatedMatchFromJSON,
+                  250,
+                )
+                .catch(() => []);
+              const teamDivId = (teamMatches[0] as any)?.division?.id as
+                | number
+                | undefined;
+              const found =
+                teamDivId != null ? sortedDivs.find((d) => d.id === teamDivId) : null;
+              if (found) targetDivId = found.id;
+            }
+          } catch {
+            // fall back to first division
+          }
+        }
+
+        if (!cancelled) setSelectedDivisionId(targetDivId);
       })
       .catch((e) => {
         if (!cancelled)
@@ -578,8 +676,12 @@ export default function EventScreen() {
     setVdaMap(null);
     setPredictionsEnabled(false);
     clearVdaCache();
+    re.custom.cache.cache.invalidate("event.meta", eventId);
+    re.custom.cache.cache.invalidate("event.teams", eventId);
+    re.custom.cache.cache.invalidate("event.skills", eventId);
+    re.custom.cache.cache.invalidate("event.awards", eventId);
     setRefreshKey((k) => k + 1);
-  }, []);
+  }, [eventId]);
 
   useEffect(() => {
     if (!loadingEvent && !loadingTeams && !loadingRankings && !loadingMatches) {
@@ -587,6 +689,13 @@ export default function EventScreen() {
       if (refreshing) setRefreshing(false);
     }
   }, [loadingEvent, loadingTeams, loadingRankings, loadingMatches, refreshing]);
+
+  useEffect(() => {
+    if (hasAutoFocusedRef.current) return;
+    if (!isMyTeamRegistered) return;
+    hasAutoFocusedRef.current = true;
+    goToTab(0);
+  }, [isMyTeamRegistered]);
 
   useEffect(() => {
     if (liveKey === 0 || selectedDivisionId === null) return;
@@ -661,7 +770,7 @@ export default function EventScreen() {
 
   const scrollHandler = useRef(
     Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }),
   ).current;
 
@@ -779,7 +888,16 @@ export default function EventScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => {
+            try {
+              router.back();
+            } catch {
+              router.push("/");
+            }
+          }}
+        >
           <ArrowLeft size={24} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={styles.topBarTitle} numberOfLines={1}>
@@ -800,7 +918,10 @@ export default function EventScreen() {
               />
             )}
           </TouchableOpacity>
-          <View onLayout={(e) => setSelectorHeight(e.nativeEvent.layout.height)}>
+          <View
+            style={{ zIndex: 100 }}
+            onLayout={(e) => setSelectorHeight(e.nativeEvent.layout.height)}
+          >
             <TouchableOpacity
               style={styles.divisionSelector}
               onPress={() => divisions.length > 1 && setDivisionSelectorOpen((v) => !v)}
@@ -922,8 +1043,9 @@ export default function EventScreen() {
               teamNumberToId={teamNumberToId}
               loading={loadingEvent || loadingTeams || loadingRankings || loadingMatches}
               onMatchPress={openMatchDrawer}
-              vdaMap={vdaMap}
+              vdaMap={predictiveVdaMap}
               predictionsEnabled={predictionsEnabled}
+              overrideTeamNumber={focusTeamNumber ?? undefined}
             />
           </ScrollView>
         )}
@@ -1061,7 +1183,7 @@ export default function EventScreen() {
         opr={selectedTeamRatings.opr}
         dpr={selectedTeamRatings.dpr}
         ccwm={selectedTeamRatings.ccwm}
-        vdaMap={vdaMap}
+        vdaMap={predictiveVdaMap}
         predictionsEnabled={predictionsEnabled}
         onMatchPress={(match) => {
           const row = scheduleRows.find((r) => r.match === match.match);
@@ -1074,7 +1196,7 @@ export default function EventScreen() {
         row={selectedMatch}
         rankingRows={rankingRows}
         onTeamSelect={openTeamDrawerFromMatch}
-        vdaMap={vdaMap}
+        vdaMap={predictiveVdaMap}
         predictionsEnabled={predictionsEnabled}
       />
     </SafeAreaView>
@@ -1089,6 +1211,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
+    zIndex: 10,
   },
   topBarTitle: {
     flex: 1,
@@ -1190,7 +1313,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: "hidden",
-    zIndex: 100,
+    zIndex: 100000,
     minWidth: 160,
   },
   divOption: { paddingHorizontal: 16, paddingVertical: 12 },

@@ -400,7 +400,11 @@ export const TeamProfileView = ({
         ) : featuredEvent ? (
           <TouchableOpacity
             style={styles.card}
-            onPress={() => router.push(`/events/${featuredEvent.id}` as any)}
+            onPress={() =>
+              router.push(
+                `/events/${featuredEvent.id}?teamNumber=${encodeURIComponent(team?.number ?? "")}` as any,
+              )
+            }
           >
             <View style={styles.cardRow}>
               <Text style={styles.eventName} numberOfLines={2}>
@@ -426,7 +430,11 @@ export const TeamProfileView = ({
             <TouchableOpacity
               key={event.id}
               style={[styles.card, { marginBottom: 8 }]}
-              onPress={() => router.push(`/events/${event.id}` as any)}
+              onPress={() =>
+                router.push(
+                  `/events/${event.id}?teamNumber=${encodeURIComponent(team?.number ?? "")}` as any,
+                )
+              }
             >
               <View style={styles.cardRow}>
                 <View style={{ flex: 1 }}>
@@ -448,7 +456,11 @@ export const TeamProfileView = ({
             <TouchableOpacity
               key={event.id}
               style={[styles.card, { marginBottom: 8 }]}
-              onPress={() => router.push(`/events/${event.id}` as any)}
+              onPress={() =>
+                router.push(
+                  `/events/${event.id}?teamNumber=${encodeURIComponent(team?.number ?? "")}` as any,
+                )
+              }
             >
               <View style={styles.cardRow}>
                 <View style={{ flex: 1 }}>

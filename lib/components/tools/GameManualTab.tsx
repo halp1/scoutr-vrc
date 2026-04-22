@@ -11,6 +11,7 @@ import {
   Keyboard,
   BackHandler,
   Animated,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -156,6 +157,7 @@ export const GameManualTab = () => {
   }, [pendingManualEntry, manual, clearPendingManualEntry]);
 
   useEffect(() => {
+    if (Platform.OS === "web") return;
     const handler = BackHandler.addEventListener("hardwareBackPress", () => {
       if (ruleDrawerVisible) {
         setRuleDrawerVisible(false);

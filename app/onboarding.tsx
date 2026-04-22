@@ -73,6 +73,11 @@ export default function OnboardingScreen() {
   }, [teamNumber, selectedProgram]);
 
   const handleOAuth = async (provider: "discord" | "github") => {
+    if (Platform.OS === "web") {
+      const redirectTo = window.location.origin + "/auth-callback";
+      await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
+      return;
+    }
     const redirectTo = Linking.createURL("auth-callback");
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,

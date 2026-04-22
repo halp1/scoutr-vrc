@@ -11,6 +11,7 @@ import {
   Share,
   RefreshControl,
   Switch,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -273,6 +274,11 @@ export default function AccountScreen() {
   };
 
   const handleOAuth = async (provider: "discord" | "github") => {
+    if (Platform.OS === "web") {
+      const redirectTo = window.location.origin + "/auth-callback";
+      await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
+      return;
+    }
     const redirectTo = Linking.createURL("auth-callback");
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -376,8 +382,15 @@ export default function AccountScreen() {
     const code = inviteCodes[teamId];
     if (!code) return;
     const formatted = code.slice(0, 4) + " " + code.slice(4);
+    const message = `Join my Scoutr scouting team "${teamName}" with invite code: ${formatted}`;
+    if (Platform.OS === "web") {
+      await navigator.clipboard.writeText(message);
+      setCopiedId(teamId);
+      setTimeout(() => setCopiedId(null), 2000);
+      return;
+    }
     await Share.share({
-      message: `Join my Scoutr scouting team "${teamName}" with invite code: ${formatted}`,
+      message,
     });
   };
 

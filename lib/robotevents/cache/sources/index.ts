@@ -1,1 +1,2 @@
-export * from './skills';
+export * from "./skills";
+export * from "./event";

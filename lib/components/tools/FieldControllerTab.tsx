@@ -138,11 +138,13 @@ export const FieldControllerTab = () => {
 
   const burnAndSave = useCallback(async (rawPath: string) => {
     setRecordingPhase("saving");
-    try {
-      const uri = rawPath.startsWith("file://") ? rawPath : `file://${rawPath}`;
-      await MediaLibrary.saveToLibraryAsync(uri);
-    } catch {
-      // ignore save errors silently
+    if (Platform.OS !== "web") {
+      try {
+        const uri = rawPath.startsWith("file://") ? rawPath : `file://${rawPath}`;
+        await MediaLibrary.saveToLibraryAsync(uri);
+      } catch {
+        // ignore save errors silently
+      }
     }
     setRecordingPhase("idle");
   }, []);
@@ -187,6 +189,7 @@ export const FieldControllerTab = () => {
   }, []);
 
   const openRecordingMode = useCallback(async () => {
+    if (Platform.OS === "web") return;
     let camOk = cameraPermission?.granted ?? false;
     let micOk = micPermission?.granted ?? false;
     let mediaOk = mediaPermission?.granted ?? false;
@@ -216,8 +219,10 @@ export const FieldControllerTab = () => {
   ]);
 
   const closeRecordingMode = useCallback(async () => {
-    await ScreenOrientation.unlockAsync();
-    await new Promise<void>((resolve) => setTimeout(resolve, 350));
+    if (Platform.OS !== "web") {
+      await ScreenOrientation.unlockAsync();
+      await new Promise<void>((resolve) => setTimeout(resolve, 350));
+    }
     setIsRecordingMode(false);
   }, []);
 
@@ -499,9 +504,11 @@ export const FieldControllerTab = () => {
             <Text style={[styles.statusLabel, { color: getModeColor() }]}>
               {getStatusLabel()}
             </Text>
-            <Pressable style={styles.recordToggleBtn} onPress={openRecordingMode}>
-              <Video size={18} color={colors.mutedForeground} />
-            </Pressable>
+            {Platform.OS !== "web" && (
+              <Pressable style={styles.recordToggleBtn} onPress={openRecordingMode}>
+                <Video size={18} color={colors.mutedForeground} />
+              </Pressable>
+            )}
           </View>
           <Text style={styles.timerDisplay}>{displayTime}</Text>
           {profileValid && (
@@ -638,117 +645,119 @@ export const FieldControllerTab = () => {
         )}
       </ScrollView>
 
-      <Modal
-        visible={isRecordingMode}
-        animationType="slide"
-        onRequestClose={() => {
-          if (recordingPhase === "idle") closeRecordingMode();
-        }}
-      >
-        <View style={styles.cameraContainer}>
-          <CameraView
-            ref={cameraRef}
-            style={styles.cameraView}
-            facing="back"
-            mode="video"
-            zoom={0}
-          />
+      {Platform.OS !== "web" && (
+        <Modal
+          visible={isRecordingMode}
+          animationType="slide"
+          onRequestClose={() => {
+            if (recordingPhase === "idle") closeRecordingMode();
+          }}
+        >
+          <View style={styles.cameraContainer}>
+            <CameraView
+              ref={cameraRef}
+              style={styles.cameraView}
+              facing="back"
+              mode="video"
+              zoom={0}
+            />
 
-          <SafeAreaView edges={["top", "left", "right"]} style={styles.camTopBar}>
-            <Pressable
-              style={[
-                styles.camCloseBtn,
-                recordingPhase !== "idle" && styles.camCloseBtnDisabled,
-              ]}
-              onPress={() => {
-                if (recordingPhase === "idle") closeRecordingMode();
-              }}
-              disabled={recordingPhase !== "idle"}
-            >
-              <X size={22} color={colors.foreground} />
-            </Pressable>
-            {(recordingPhase === "active" || recordingPhase === "countdown") && (
-              <View style={styles.recIndicator}>
-                <Circle size={10} color={colors.primary} fill={colors.primary} />
-                <Text style={styles.recText}>REC</Text>
-              </View>
-            )}
-          </SafeAreaView>
+            <SafeAreaView edges={["top", "left", "right"]} style={styles.camTopBar}>
+              <Pressable
+                style={[
+                  styles.camCloseBtn,
+                  recordingPhase !== "idle" && styles.camCloseBtnDisabled,
+                ]}
+                onPress={() => {
+                  if (recordingPhase === "idle") closeRecordingMode();
+                }}
+                disabled={recordingPhase !== "idle"}
+              >
+                <X size={22} color={colors.foreground} />
+              </Pressable>
+              {(recordingPhase === "active" || recordingPhase === "countdown") && (
+                <View style={styles.recIndicator}>
+                  <Circle size={10} color={colors.primary} fill={colors.primary} />
+                  <Text style={styles.recText}>REC</Text>
+                </View>
+              )}
+            </SafeAreaView>
 
-          <View style={styles.camCenter} pointerEvents="none">
-            {recordingPhase === "countdown" && (
-              <View style={styles.countdownOverlay}>
-                <Text style={styles.countdownNumber}>{countdownValue}</Text>
-                <Text style={styles.countdownLabel}>Get ready</Text>
-              </View>
-            )}
-            {recordingPhase === "active" && (
-              <View style={styles.activeTimerOverlay}>
-                <Text style={[styles.camStatusLabel, { color: getModeColor() }]}>
-                  {getStatusLabel()}
-                </Text>
-                <Text style={styles.camTimerDisplay}>{displayTime}</Text>
-              </View>
-            )}
-            {recordingPhase === "post-match" && (
-              <View style={styles.postMatchOverlay}>
-                <Text style={styles.postMatchTitle}>Match Ended</Text>
-                <Text style={styles.postMatchSub}>Saving in {countdownValue}s…</Text>
-              </View>
-            )}
-            {recordingPhase === "saving" && (
-              <View style={styles.processingOverlay}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.processingText}>Saving to gallery…</Text>
-              </View>
-            )}
-          </View>
-
-          {(recordingPhase === "idle" ||
-            recordingPhase === "active" ||
-            recordingPhase === "countdown") &&
-            profileValid && (
-              <SafeAreaView edges={["right", "bottom"]} style={styles.camSideBar}>
-                {recordingPhase === "idle" && (
-                  <View style={styles.camStatusCol}>
-                    <Text style={[styles.camBottomStatus, { color: getModeColor() }]}>
-                      {getStatusLabel()}
-                    </Text>
-                    <Text style={styles.camBottomTime}>{displayTime}</Text>
-                  </View>
-                )}
-                <Pressable style={styles.camBtn1} onPress={btn1Press}>
-                  {timer.status === TimerStatus.RUNNING ? (
-                    <Pause
-                      size={22}
-                      color={colors.primaryForeground}
-                      fill={colors.primaryForeground}
-                    />
-                  ) : timer.status === TimerStatus.PAUSE ? (
-                    <Play
-                      size={22}
-                      color={colors.primaryForeground}
-                      fill={colors.primaryForeground}
-                    />
-                  ) : (
-                    <SkipForward
-                      size={22}
-                      color={colors.primaryForeground}
-                      fill={colors.primaryForeground}
-                    />
-                  )}
-                  <Text style={styles.btnLabel}>{getBtn1Label()}</Text>
-                </Pressable>
-                <Pressable style={styles.camBtn2} onPress={btn2Press}>
-                  <StopCircle size={22} color={colors.foreground} />
-                  <Text style={[styles.btnLabel, { color: colors.foreground }]}>
-                    {getBtn2Label()}
+            <View style={styles.camCenter} pointerEvents="none">
+              {recordingPhase === "countdown" && (
+                <View style={styles.countdownOverlay}>
+                  <Text style={styles.countdownNumber}>{countdownValue}</Text>
+                  <Text style={styles.countdownLabel}>Get ready</Text>
+                </View>
+              )}
+              {recordingPhase === "active" && (
+                <View style={styles.activeTimerOverlay}>
+                  <Text style={[styles.camStatusLabel, { color: getModeColor() }]}>
+                    {getStatusLabel()}
                   </Text>
-                </Pressable>
-              </SafeAreaView>
-            )}
-        </View>
-      </Modal>
+                  <Text style={styles.camTimerDisplay}>{displayTime}</Text>
+                </View>
+              )}
+              {recordingPhase === "post-match" && (
+                <View style={styles.postMatchOverlay}>
+                  <Text style={styles.postMatchTitle}>Match Ended</Text>
+                  <Text style={styles.postMatchSub}>Saving in {countdownValue}s…</Text>
+                </View>
+              )}
+              {recordingPhase === "saving" && (
+                <View style={styles.processingOverlay}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.processingText}>Saving to gallery…</Text>
+                </View>
+              )}
+            </View>
+
+            {(recordingPhase === "idle" ||
+              recordingPhase === "active" ||
+              recordingPhase === "countdown") &&
+              profileValid && (
+                <SafeAreaView edges={["right", "bottom"]} style={styles.camSideBar}>
+                  {recordingPhase === "idle" && (
+                    <View style={styles.camStatusCol}>
+                      <Text style={[styles.camBottomStatus, { color: getModeColor() }]}>
+                        {getStatusLabel()}
+                      </Text>
+                      <Text style={styles.camBottomTime}>{displayTime}</Text>
+                    </View>
+                  )}
+                  <Pressable style={styles.camBtn1} onPress={btn1Press}>
+                    {timer.status === TimerStatus.RUNNING ? (
+                      <Pause
+                        size={22}
+                        color={colors.primaryForeground}
+                        fill={colors.primaryForeground}
+                      />
+                    ) : timer.status === TimerStatus.PAUSE ? (
+                      <Play
+                        size={22}
+                        color={colors.primaryForeground}
+                        fill={colors.primaryForeground}
+                      />
+                    ) : (
+                      <SkipForward
+                        size={22}
+                        color={colors.primaryForeground}
+                        fill={colors.primaryForeground}
+                      />
+                    )}
+                    <Text style={styles.btnLabel}>{getBtn1Label()}</Text>
+                  </Pressable>
+                  <Pressable style={styles.camBtn2} onPress={btn2Press}>
+                    <StopCircle size={22} color={colors.foreground} />
+                    <Text style={[styles.btnLabel, { color: colors.foreground }]}>
+                      {getBtn2Label()}
+                    </Text>
+                  </Pressable>
+                </SafeAreaView>
+              )}
+          </View>
+        </Modal>
+      )}
 
       {abortSheetVisible && (
         <Modal

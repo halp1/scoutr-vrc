@@ -1,0 +1,10 @@
+{
+  "name": "scoutr-proxy",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "bun run index.ts"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.13"
+  }
+}

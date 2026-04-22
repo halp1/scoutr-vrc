@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
 
 const msUntilNextBoundary = () => {
@@ -16,7 +15,7 @@ export const useLivePolling = (refresh: () => void) => {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const isFocusedRef = useRef(false);
-  const isActiveRef = useRef(AppState.currentState === "active");
+  const isVisibleRef = useRef(!document.hidden);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPollTimeRef = useRef<number>(0);
@@ -41,7 +40,7 @@ export const useLivePolling = (refresh: () => void) => {
   const maybeStart = useCallback(() => {
     if (
       !isFocusedRef.current ||
-      !isActiveRef.current ||
+      !isVisibleRef.current ||
       intervalRef.current !== null ||
       timeoutRef.current !== null
     )
@@ -51,7 +50,7 @@ export const useLivePolling = (refresh: () => void) => {
     }
     timeoutRef.current = setTimeout(() => {
       timeoutRef.current = null;
-      if (!isFocusedRef.current || !isActiveRef.current) return;
+      if (!isFocusedRef.current || !isVisibleRef.current) return;
       poll();
       intervalRef.current = setInterval(poll, 30_000);
     }, msUntilNextBoundary());
@@ -69,16 +68,17 @@ export const useLivePolling = (refresh: () => void) => {
   );
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      const wasActive = isActiveRef.current;
-      isActiveRef.current = nextState === "active";
-      if (isActiveRef.current && !wasActive) {
+    const handler = () => {
+      const wasVisible = isVisibleRef.current;
+      isVisibleRef.current = !document.hidden;
+      if (isVisibleRef.current && !wasVisible) {
         maybeStart();
-      } else if (!isActiveRef.current) {
+      } else if (!isVisibleRef.current) {
         stop();
       }
-    });
-    return () => subscription.remove();
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
   }, [maybeStart, stop]);
 
   return { lastRefreshed };

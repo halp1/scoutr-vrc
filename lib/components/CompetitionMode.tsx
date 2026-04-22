@@ -14,7 +14,7 @@ import { re } from "../robotevents";
 import { SkillType } from "../robotevents/robotevents/models";
 import { RankStatsCard, SkillsStatsCard } from "./events/StatsCards";
 import type { TeamSummary, TeamSkills } from "./events/StatsCards";
-import type { Event, MatchObj } from "../robotevents/robotevents/models";
+import type { Event, MatchObj, Division } from "../robotevents/robotevents/models";
 
 type RankingRow = {
   rank: number;
@@ -138,13 +138,32 @@ export const CompetitionMode = ({ event, teamId, teamNumber }: Props) => {
     setLoadingSkills(true);
     setSkillsError(null);
 
-    re.events.eventGetEvent({ id: event.id }).then((eventData) => {
-      if (cancelled) return;
-      const sorted = [...(eventData.divisions ?? [])].sort(
-        (a, b) => (a.order ?? 0) - (b.order ?? 0),
-      );
-      setDivId((sorted[0] as (typeof sorted)[0] & { id: number })?.id ?? null);
-    });
+    (async () => {
+      try {
+        const [eventData, teamMatches] = await Promise.all([
+          re.events.eventGetEvent({ id: event.id }),
+          re
+            .depaginate(
+              re.team.teamGetMatches(
+                { id: teamId, event: [event.id] },
+                re.custom.maxPages,
+              ),
+              re.models.PaginatedMatchFromJSON,
+              250,
+            )
+            .catch(() => []),
+        ]);
+        if (cancelled) return;
+        const sorted = [...(eventData.divisions ?? [])].sort(
+          (a, b) => (a.order ?? 0) - (b.order ?? 0),
+        ) as (Division & { id: number })[];
+        const teamDivId = (teamMatches[0] as any)?.division?.id as number | undefined;
+        const found = teamDivId != null ? sorted.find((d) => d.id === teamDivId) : null;
+        setDivId(found?.id ?? sorted[0]?.id ?? null);
+      } catch {
+        // ignore
+      }
+    })();
 
     re.depaginate(
       re.events.eventGetSkills({ id: event.id }, re.custom.maxPages),
@@ -356,7 +375,11 @@ export const CompetitionMode = ({ event, teamId, teamNumber }: Props) => {
         </Text>
         <TouchableOpacity
           style={styles.openBtn}
-          onPress={() => router.push(`/events/${event.id}` as any)}
+          onPress={() =>
+            router.push(
+              `/events/${event.id}?teamNumber=${encodeURIComponent(teamNumber)}` as any,
+            )
+          }
         >
           <Text style={styles.openBtnText}>Open</Text>
           <ArrowRight size={14} color={colors.primary} />

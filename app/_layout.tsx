@@ -6,7 +6,7 @@ import { Stack, Redirect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator, StyleSheet, Platform } from "react-native";
 import { useStorage } from "../lib/state/storage";
 import { supabase } from "../lib/supabase";
 import { fetchAllNotes } from "../lib/supabase/notes";
@@ -33,7 +33,9 @@ window.__devhooks__.clearQNACache = clearQNACache;
 export default function RootLayout() {
   useNotificationSetup();
   useEffect(() => {
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    if (Platform.OS !== "web") {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    }
   }, []);
   const _hydrated = useStorage((s) => s._hydrated);
   const auth = useStorage((s) => s.auth);
@@ -66,6 +68,7 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === "web") return;
     const handleUrl = ({ url }: { url: string }) => {
       if (!url.includes("auth-callback")) return;
       const fragment = url.split("#")[1] ?? "";

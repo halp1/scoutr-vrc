@@ -9,6 +9,7 @@ import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -87,7 +88,7 @@ export default function ToolsScreen() {
 
   const scrollHandler = useRef(
     Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }),
   ).current;
 

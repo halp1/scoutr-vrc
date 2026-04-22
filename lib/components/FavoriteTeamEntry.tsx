@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import {
@@ -22,11 +23,21 @@ import { colors, font, radius, spacing } from "../theme";
 import { re } from "../robotevents";
 import { SkillType } from "../robotevents/robotevents/models";
 import type { Event, Team } from "../robotevents/robotevents/models";
+import type { Division } from "../robotevents/robotevents/models";
 import { RankStatsCard, SkillsStatsCard } from "./events/StatsCards";
 import type { TeamSummary, TeamSkills } from "./events/StatsCards";
 import { getVDAStatsByTeamNum, type VDAStats } from "../data/vda";
 import { useStorage } from "../state/storage";
 import { useLivePolling } from "../hooks/useLivePolling";
+
+const _inf = new Map<string, Promise<any>>();
+const dedup = <T,>(key: string, fn: () => Promise<T>): Promise<T> => {
+  const hit = _inf.get(key);
+  if (hit) return hit as Promise<T>;
+  const p = fn().finally(() => _inf.delete(key));
+  _inf.set(key, p);
+  return p;
+};
 import { requestNotificationPermission } from "../notifications";
 import {
   addNotificationPreference,
@@ -125,13 +136,15 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
 
         setTeam(fetched);
 
-        const seasons = await re.depaginate(
-          re.season.seasonGetSeasons(
-            { program: [fetched.program.id] },
-            re.custom.maxPages,
+        const seasons = await dedup(`seasons:program:${fetched.program.id}`, () =>
+          re.depaginate(
+            re.season.seasonGetSeasons(
+              { program: [fetched.program.id] },
+              re.custom.maxPages,
+            ),
+            re.models.PaginatedSeasonFromJSON,
+            250,
           ),
-          re.models.PaginatedSeasonFromJSON,
-          250,
         );
         if (cancelled || seasons.length === 0) {
           if (!cancelled) setLoadingHeader(false);
@@ -275,12 +288,29 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
     setActiveDivId(null);
     setLiveKey(0);
 
-    re.events.eventGetEvent({ id: activeEvent.id }).then((eventData) => {
+    dedup(`event:${activeEvent.id}:info`, () =>
+      re.events.eventGetEvent({ id: activeEvent.id }),
+    ).then(async (eventData) => {
       if (cancelled) return;
       const sorted = [...(eventData.divisions ?? [])].sort(
         (a, b) => (a.order ?? 0) - (b.order ?? 0),
-      );
-      setActiveDivId((sorted[0] as (typeof sorted)[0] & { id: number })?.id ?? null);
+      ) as (Division & { id: number })[];
+      const teamMatches = await dedup(
+        `event:${activeEvent.id}:team:${teamId}:matches`,
+        () =>
+          re.depaginate(
+            re.team.teamGetMatches(
+              { id: teamId, event: [activeEvent.id] },
+              re.custom.maxPages,
+            ),
+            re.models.PaginatedMatchFromJSON,
+            250,
+          ),
+      ).catch(() => [] as any[]);
+      if (cancelled) return;
+      const teamDivId = (teamMatches[0] as any)?.division?.id as number | undefined;
+      const found = teamDivId != null ? sorted.find((d) => d.id === teamDivId) : null;
+      setActiveDivId(found?.id ?? sorted[0]?.id ?? null);
     });
 
     return () => {
@@ -297,21 +327,23 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
       setLoadingEventSkills(true);
     }
 
-    Promise.all([
-      re.depaginate(
-        re.events.eventGetDivisionRankings(
-          { id: activeEvent.id, div: activeDivId },
-          re.custom.maxPages,
+    dedup(`event:${activeEvent.id}:div:${activeDivId}:rankteams`, () =>
+      Promise.all([
+        re.depaginate(
+          re.events.eventGetDivisionRankings(
+            { id: activeEvent.id, div: activeDivId },
+            re.custom.maxPages,
+          ),
+          re.models.PaginatedRankingFromJSON,
+          250,
         ),
-        re.models.PaginatedRankingFromJSON,
-        250,
-      ),
-      re.depaginate(
-        re.events.eventGetTeams({ id: activeEvent.id }, re.custom.maxPages),
-        re.models.PaginatedTeamFromJSON,
-        250,
-      ),
-    ])
+        re.depaginate(
+          re.events.eventGetTeams({ id: activeEvent.id }, re.custom.maxPages),
+          re.models.PaginatedTeamFromJSON,
+          250,
+        ),
+      ]),
+    )
       .then(([rankings, teams]) => {
         if (cancelled) return;
         const teamMap = new Map(teams.map((t) => [t.id, t.number]));
@@ -339,10 +371,12 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
         if (!cancelled) setLoadingRank(false);
       });
 
-    re.depaginate(
-      re.events.eventGetSkills({ id: activeEvent.id }, re.custom.maxPages),
-      re.models.PaginatedSkillFromJSON,
-      250,
+    dedup(`event:${activeEvent.id}:skills`, () =>
+      re.depaginate(
+        re.events.eventGetSkills({ id: activeEvent.id }, re.custom.maxPages),
+        re.models.PaginatedSkillFromJSON,
+        250,
+      ),
     )
       .then((skills) => {
         if (cancelled) return;
@@ -416,13 +450,15 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
             {team?.teamName ?? team?.organization ?? "Team profile"}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={toggleNotif} hitSlop={8} style={{ paddingRight: 8 }}>
-          {isNotifEnabled ? (
-            <Bell size={18} color={colors.primary} fill={colors.primary} />
-          ) : (
-            <BellOff size={18} color={colors.mutedForeground} />
-          )}
-        </TouchableOpacity>
+        {Platform.OS !== "web" && (
+          <TouchableOpacity onPress={toggleNotif} hitSlop={8} style={{ paddingRight: 8 }}>
+            {isNotifEnabled ? (
+              <Bell size={18} color={colors.primary} fill={colors.primary} />
+            ) : (
+              <BellOff size={18} color={colors.mutedForeground} />
+            )}
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={toggleFav} hitSlop={8} style={{ paddingRight: 4 }}>
           <Star
             size={20}
@@ -444,7 +480,11 @@ export const FavoriteTeamEntry = ({ teamId }: Props) => {
             </View>
             <TouchableOpacity
               style={styles.openBtn}
-              onPress={() => router.push(`/events/${activeEvent.id}` as any)}
+              onPress={() =>
+                router.push(
+                  `/events/${activeEvent.id}?teamNumber=${encodeURIComponent(team?.number ?? "")}` as any,
+                )
+              }
             >
               <Text style={styles.openBtnText}>Open</Text>
               <ArrowRight size={14} color={colors.primary} />
