@@ -1,9 +1,48 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CONSTANTS } from "../../const";
 
 const QNA_API = `${CONSTANTS.PROXY_URL}/qna`;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const CACHE_KEY = "qna-cache-web";
+const IDB_NAME = "scoutr-cache";
+const IDB_STORE = "keyval";
+
+const openDB = (): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+const idbGet = async (key: string): Promise<string | null> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readonly");
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve((req.result as string | undefined) ?? null);
+    req.onerror = () => reject(req.error);
+  });
+};
+
+const idbSet = async (key: string, value: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+const idbDelete = async (key: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
 
 export const resolveImageUri = (url: string): string => url;
 
@@ -135,7 +174,7 @@ const readCache = async (): Promise<{
   questions: QnaQuestion[];
 }> => {
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    const raw = await idbGet(CACHE_KEY);
     if (!raw) return { cacheVersion: "_", cacheLastSync: 0, questions: [] };
     const parsed = JSON.parse(raw) as CacheData;
     const questions = Array.isArray(parsed.questions)
@@ -159,12 +198,12 @@ const saveCache = async (
   questions: QnaQuestion[],
 ): Promise<number> => {
   const data: CacheData = { version, lastSync, questions };
-  await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  await idbSet(CACHE_KEY, JSON.stringify(data));
   return questions.length;
 };
 
 export const clearQNACache = async (): Promise<void> => {
-  await AsyncStorage.removeItem(CACHE_KEY);
+  await idbDelete(CACHE_KEY);
 };
 
 const shouldAutoRefresh = (lastSync: number): boolean =>
